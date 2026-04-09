@@ -7,7 +7,7 @@ const description =
   'Estratégia, gestão, comunicação e ferramentas integradas em um ecossistema de alta performance.';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://dqfb-business.vercel.app'),
+  metadataBase: new URL('https://www.businessdqfb.francielecaleffi.com.br'),
   title: {
     default: title,
     template: '%s | DQFB Business',

@@ -6,6 +6,6 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: '*',
       allow: '/',
     },
-    sitemap: 'https://dqfb-business.vercel.app/sitemap.xml',
+    sitemap: 'https://www.businessdqfb.francielecaleffi.com.br/sitemap.xml',
   };
 }
