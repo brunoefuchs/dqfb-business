@@ -28,3 +28,4 @@ Thumbs.db
 .claude/settings.local.json
 .aiox/install-log.txt
 .next
+*.tsbuildinfo
