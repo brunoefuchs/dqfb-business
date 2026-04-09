@@ -8,7 +8,10 @@ export default function Home() {
   return (
     <>
       <Header />
-      <main className="flex-grow max-w-[1920px] mx-auto w-full px-8 py-12 flex flex-col justify-center md:px-8">
+      <main
+        id="main-content"
+        className="flex-grow max-w-[1920px] mx-auto w-full px-8 py-12 flex flex-col justify-center md:px-8"
+      >
         <HeroSection />
         <ModulesGrid />
         <QuoteSection />
