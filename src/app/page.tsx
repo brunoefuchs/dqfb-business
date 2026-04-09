@@ -1,8 +1,19 @@
+import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
+import { HeroSection } from '@/components/sections/HeroSection';
+import { ModulesGrid } from '@/components/sections/ModulesGrid';
+import { QuoteSection } from '@/components/sections/QuoteSection';
+
 export default function Home() {
   return (
-    <main className="flex-grow max-w-[1920px] mx-auto w-full px-8 py-12">
-      <h1 className="font-display text-4xl font-bold text-primary">DQFB Business</h1>
-      <p className="font-body text-on-surface-variant mt-4">Portal em construção.</p>
-    </main>
+    <>
+      <Header />
+      <main className="flex-grow max-w-[1920px] mx-auto w-full px-8 py-12 flex flex-col justify-center md:px-8">
+        <HeroSection />
+        <ModulesGrid />
+        <QuoteSection />
+      </main>
+      <Footer />
+    </>
   );
 }
