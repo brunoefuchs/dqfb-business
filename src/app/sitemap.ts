@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://dqfb-business.vercel.app';
+  const baseUrl = 'https://www.businessdqfb.francielecaleffi.com.br';
 
   return [
     {
