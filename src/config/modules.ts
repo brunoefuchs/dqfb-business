@@ -22,9 +22,9 @@ export const modules: ModuleConfig[] = [
     description:
       'Gestão de tesouraria e fluxo de caixa com dashboards inteligentes para tomada de decisão executiva.',
     icon: 'payments',
-    bgColor: 'bg-secondary',
+    bgColor: 'bg-[#0a1f44]',
     buttonText: 'Visualizar Fluxo',
-    buttonTextColor: 'text-secondary',
+    buttonTextColor: 'text-[#0a1f44]',
     url: process.env.NEXT_PUBLIC_MODULE_FINANCEIRO_URL ?? '#',
   },
   {
