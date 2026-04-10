@@ -29,3 +29,6 @@ Thumbs.db
 .aiox/install-log.txt
 .next
 *.tsbuildinfo
+
+# Vercel
+.vercel
