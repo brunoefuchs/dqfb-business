@@ -36,9 +36,9 @@ export const modules: ModuleConfig[] = [
       'Planejamento patrimonial e controle de ativos individuais com a segurança DQFB Business.',
     icon: 'account_balance_wallet',
     iconFilled: true,
-    bgColor: 'bg-tertiary-container',
+    bgColor: 'bg-[#0a1f44]',
     buttonText: 'Gerenciar',
-    buttonTextColor: 'text-tertiary-container',
+    buttonTextColor: 'text-[#0a1f44]',
     url: process.env.NEXT_PUBLIC_MODULE_FINANCEIRO_PESSOAL_URL ?? '#',
   },
   {
