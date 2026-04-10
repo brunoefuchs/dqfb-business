@@ -6,8 +6,8 @@ export function QuoteSection() {
       <div className="md:col-span-5">
         <div className="relative w-full aspect-[4/5] grayscale hover:grayscale-0 transition-all duration-700 shadow-xl overflow-hidden">
           <Image
-            src="/images/quote-boardroom.jpg"
-            alt="Sala de reunião corporativa DQFB Business"
+            src="/images/quote-portrait.jpg"
+            alt="Fran Caleffi — DQFB Business"
             fill
             sizes="(max-width: 768px) 100vw, 40vw"
             className="object-cover"
