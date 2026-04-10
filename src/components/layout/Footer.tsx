@@ -27,7 +27,7 @@ export function Footer() {
           </a>
         </div>
         <div className="font-body uppercase text-[10px] tracking-[0.2em] text-[#881D28] dark:text-[#EDD4D7]">
-          © 2026 DQFB Business. Editorial Excellence in Finance.
+          © 2026 DQFB Business. Excellence in Life.
         </div>
       </footer>
     </>

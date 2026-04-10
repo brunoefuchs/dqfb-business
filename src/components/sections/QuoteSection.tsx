@@ -20,7 +20,7 @@ export function QuoteSection() {
           &ldquo;A verdadeira sofisticação não está na complexidade, mas na clareza absoluta com que as decisões são tomadas.&rdquo;
         </blockquote>
         <cite className="font-body text-[10px] uppercase tracking-[0.3em] text-primary block not-italic">
-          Conselho Editorial DQFB Business
+          DQFB Business
         </cite>
       </div>
     </div>
