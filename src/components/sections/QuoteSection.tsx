@@ -6,8 +6,8 @@ export function QuoteSection() {
       <div className="md:col-span-5">
         <div className="relative w-full aspect-[4/5] grayscale hover:grayscale-0 transition-all duration-700 shadow-xl overflow-hidden">
           <Image
-            src="https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80&auto=format&fit=crop"
-            alt="Sala de reunião corporativa minimalista"
+            src="/images/quote-boardroom.jpg"
+            alt="Sala de reunião corporativa DQFB Business"
             fill
             sizes="(max-width: 768px) 100vw, 40vw"
             className="object-cover"
