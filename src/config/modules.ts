@@ -63,9 +63,9 @@ export const modules: ModuleConfig[] = [
       'Conteúdo selecionado e análise macroeconômica diária preparada pelo nosso team editorial.',
     icon: 'auto_awesome',
     iconFilled: true,
-    bgColor: 'bg-[#0C453E]',
+    bgColor: 'bg-tertiary-container',
     buttonText: 'Ver Insights',
-    buttonTextColor: 'text-secondary',
+    buttonTextColor: 'text-tertiary-container',
     url: process.env.NEXT_PUBLIC_MODULE_CURADORIA_URL ?? '#',
   },
 ];
