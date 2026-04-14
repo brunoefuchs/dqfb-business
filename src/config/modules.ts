@@ -25,7 +25,7 @@ export const modules: ModuleConfig[] = [
     bgColor: 'bg-[#0a1f44]',
     buttonText: 'Visualizar Fluxo',
     buttonTextColor: 'text-[#0a1f44]',
-    url: process.env.NEXT_PUBLIC_MODULE_FINANCEIRO_URL ?? '#',
+    url: process.env.NEXT_PUBLIC_MODULE_FINANCEIRO_URL ?? 'https://financeiro.francaleffi.com.br/',
   },
   {
     id: 'financeiro-pessoal',
@@ -39,7 +39,7 @@ export const modules: ModuleConfig[] = [
     bgColor: 'bg-[#0a1f44]',
     buttonText: 'Gerenciar',
     buttonTextColor: 'text-[#0a1f44]',
-    url: process.env.NEXT_PUBLIC_MODULE_FINANCEIRO_PESSOAL_URL ?? '#',
+    url: process.env.NEXT_PUBLIC_MODULE_FINANCEIRO_PESSOAL_URL ?? 'https://financeiro.francaleffi.com.br/',
   },
   {
     id: 'talk',
