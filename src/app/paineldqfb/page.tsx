@@ -1,0 +1,511 @@
+'use client';
+
+/**
+ * /paineldqfb — Painel admin de IA (custo + revisar respostas da Mel).
+ *
+ * Página client self-contained: fala com a Edge Function `admin-painel` do Supabase
+ * (API JSON + HTTP Basic Auth + CORS). 1ª vez pede a senha (usuário `dqfb`) e guarda
+ * no navegador. Os dados ficam atrás do login na função; a página em si é pública.
+ *
+ * Abas: CUSTO (lê app.vw_custo_ia) · REVISAR RESPOSTAS (fila da Mel: revisar/descartar/
+ * promover ao acervo). Estilo na paleta DQFB (wine/magenta/cream), inline para não
+ * depender do design system do site.
+ */
+import { useCallback, useEffect, useState } from 'react';
+
+const BASE = 'https://xwiomidydfappnrrsjqh.supabase.co/functions/v1/admin-painel';
+const USER = 'dqfb';
+
+const fmt = (n: number) =>
+  'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface Custo {
+  dias_grafico: number;
+  usd_brl: number;
+  total_brl: number;
+  chamadas: number;
+  usuarias: number;
+  custo_medio_brl: number;
+  algum_estimado: boolean;
+  desde: string | null;
+  provedor: { provedor: string; brl: number; chamadas: number }[];
+  feature: { feature: string; brl: number; chamadas: number }[];
+  mes: { mes: string; brl: number; chamadas: number }[];
+  dia: { dia: string; brl: number }[];
+  usuaria: { usuaria: string; brl: number; chamadas: number }[];
+}
+interface Fonte {
+  tipo?: string;
+  doi?: string | null;
+  id?: string | null;
+  url?: string | null;
+}
+interface FilaItem {
+  id: string;
+  pergunta: string;
+  resposta: string;
+  tier_usado: string;
+  fontes_citadas: Fonte[] | null;
+  feedback: string | null;
+  created_at: string;
+}
+
+function usePainelApi() {
+  const getPass = useCallback(() => {
+    let p = localStorage.getItem('dqfb_pass');
+    if (!p) {
+      p = window.prompt(`Senha do painel (usuário ${USER}):`) || '';
+      if (p) localStorage.setItem('dqfb_pass', p);
+    }
+    return p;
+  }, []);
+
+  const api = useCallback(
+    async (path: string, opts?: RequestInit) => {
+      for (let t = 0; t < 3; t++) {
+        const r = await fetch(BASE + path, {
+          ...opts,
+          headers: { authorization: 'Basic ' + btoa(`${USER}:${getPass()}`), 'content-type': 'application/json' },
+        });
+        if (r.status === 401) {
+          localStorage.removeItem('dqfb_pass');
+          throw new Error('Senha incorreta — recarregue a página.');
+        }
+        if (r.status >= 500 && t < 2) {
+          await sleep(1500);
+          continue;
+        }
+        if (!r.ok) throw new Error('Erro ' + r.status);
+        return r.json();
+      }
+    },
+    [getPass],
+  );
+
+  return api;
+}
+
+export default function PainelDqfb() {
+  const api = usePainelApi();
+  const [tab, setTab] = useState<'custo' | 'revisar'>('custo');
+  const [custo, setCusto] = useState<Custo | null>(null);
+  const [fila, setFila] = useState<FilaItem[] | null>(null);
+  const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(true);
+
+  const loadCusto = useCallback(async () => {
+    setErro('');
+    setCarregando(true);
+    try {
+      setCusto((await api('?data=1')) as Custo);
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setCarregando(false);
+    }
+  }, [api]);
+
+  const loadFila = useCallback(async () => {
+    setErro('');
+    setCarregando(true);
+    try {
+      const d = (await api('?fila=mel')) as { itens: FilaItem[] };
+      setFila(d.itens ?? []);
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setCarregando(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void loadCusto();
+  }, [loadCusto]);
+
+  const trocarTab = (t: 'custo' | 'revisar') => {
+    setTab(t);
+    if (t === 'custo') void loadCusto();
+    else void loadFila();
+  };
+
+  const removerDaFila = (id: string) => setFila((f) => (f ? f.filter((x) => x.id !== id) : f));
+
+  const acao = async (id: string, action: 'revisar' | 'descartar') => {
+    let nota: string | null = null;
+    if (action === 'descartar') nota = window.prompt('Motivo do descarte (opcional):') || null;
+    try {
+      await api('', { method: 'POST', body: JSON.stringify({ action, id, nota }) });
+      removerDaFila(id);
+    } catch (e) {
+      window.alert(String(e));
+    }
+  };
+
+  const promover = async (
+    id: string,
+    p: { titulo: string; resumo: string; lente: string | null; doi: string },
+  ) => {
+    if (!p.titulo.trim() || !p.resumo.trim()) {
+      window.alert('Título e resumo são obrigatórios.');
+      return;
+    }
+    try {
+      await api('', { method: 'POST', body: JSON.stringify({ action: 'promover', id, ...p }) });
+      removerDaFila(id);
+      window.alert(
+        'Adicionado ao acervo! ⚠️ Para virar pesquisável, rode uma vez:\n\nnode scripts/etl-mel-backfill-embed.mjs',
+      );
+    } catch (e) {
+      window.alert(String(e));
+    }
+  };
+
+  return (
+    <>
+      <meta name="robots" content="noindex" />
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <div className="pdqfb-wrap">
+        <div className="pdqfb-top">
+          <div>
+            <div className="pdqfb-eyebrow">DQFB · Admin</div>
+            <h1 className="pdqfb-h1">
+              Painel <span>DQFB</span>
+            </h1>
+            <div className="pdqfb-tools">
+              <button onClick={() => (tab === 'custo' ? loadCusto() : loadFila())}>Atualizar</button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('dqfb_pass');
+                  location.reload();
+                }}
+              >
+                Trocar senha
+              </button>
+            </div>
+          </div>
+          <div className="pdqfb-note">
+            {custo?.desde ? `histórico desde ${custo.desde} · US$ ${custo.usd_brl}` : ''}
+          </div>
+        </div>
+
+        <div className="pdqfb-tabs">
+          <button className={tab === 'custo' ? 'on' : ''} onClick={() => trocarTab('custo')}>
+            Custo de IA
+          </button>
+          <button className={tab === 'revisar' ? 'on' : ''} onClick={() => trocarTab('revisar')}>
+            Revisar respostas
+          </button>
+        </div>
+
+        {erro ? <div className="pdqfb-err">{erro}</div> : null}
+        {carregando ? <div className="pdqfb-loading">Carregando…</div> : null}
+
+        {!carregando && tab === 'custo' && custo ? <CustoView d={custo} /> : null}
+        {!carregando && tab === 'revisar' && fila ? (
+          <RevisarView itens={fila} onAcao={acao} onPromover={promover} />
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function CustoView({ d }: { d: Custo }) {
+  const maxDia = Math.max(1, ...d.dia.map((x) => x.brl));
+  const maxProv = Math.max(1, ...d.provedor.map((x) => x.brl));
+  return (
+    <>
+      <div className="pdqfb-kpis">
+        <div className="pdqfb-kpi dark">
+          <div className="lbl">Total · histórico</div>
+          <div className="val">{fmt(d.total_brl)}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Chamadas de IA</div>
+          <div className="val">{d.chamadas.toLocaleString('pt-BR')}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Usuárias</div>
+          <div className="val">{d.usuarias}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Custo médio</div>
+          <div className="val">
+            {fmt(d.custo_medio_brl)}
+            <small>/chamada</small>
+          </div>
+        </div>
+      </div>
+
+      <div className="pdqfb-grid">
+        <div className="pdqfb-panel">
+          <h2>Por provedor</h2>
+          {d.provedor.map((p) => (
+            <div key={p.provedor}>
+              <div className="pdqfb-row">
+                <div className="name">
+                  {p.provedor} <small>{p.chamadas} chamadas</small>
+                </div>
+                <div className="v">{fmt(p.brl)}</div>
+              </div>
+              <div className="pdqfb-bar">
+                <span style={{ width: `${Math.round((p.brl / maxProv) * 100)}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="pdqfb-panel">
+          <h2>Por feature</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th className="num">Chamadas</th>
+                <th className="num">Custo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.feature.map((f) => (
+                <tr key={f.feature}>
+                  <td>{f.feature}</td>
+                  <td className="num">{f.chamadas}</td>
+                  <td className="num">{fmt(f.brl)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="pdqfb-panel" style={{ marginTop: 18 }}>
+        <h2>
+          Por mês <small>histórico completo</small>
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Mês</th>
+              <th className="num">Chamadas</th>
+              <th className="num">Custo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.mes.map((m) => (
+              <tr key={m.mes}>
+                <td>{m.mes}</td>
+                <td className="num">{m.chamadas}</td>
+                <td className="num">{fmt(m.brl)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="pdqfb-panel" style={{ marginTop: 18 }}>
+        <h2>
+          Por dia <small>últimos {d.dias_grafico}d</small>
+        </h2>
+        <div className="pdqfb-spark">
+          {d.dia.map((x) => (
+            <div key={x.dia} className="d" style={{ height: `${Math.round((x.brl / maxDia) * 100)}%` }}>
+              <span className="t">
+                {x.dia.slice(5)} · {fmt(x.brl)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="pdqfb-panel" style={{ marginTop: 18 }}>
+        <h2>
+          Top usuárias <small>por custo</small>
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Usuária</th>
+              <th className="num">Chamadas</th>
+              <th className="num">Custo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.usuaria.map((u) => (
+              <tr key={u.usuaria}>
+                <td>{u.usuaria}…</td>
+                <td className="num">{u.chamadas}</td>
+                <td className="num">{fmt(u.brl)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function RevisarView({
+  itens,
+  onAcao,
+  onPromover,
+}: {
+  itens: FilaItem[];
+  onAcao: (id: string, a: 'revisar' | 'descartar') => void;
+  onPromover: (id: string, p: { titulo: string; resumo: string; lente: string | null; doi: string }) => void;
+}) {
+  if (itens.length === 0) return <div className="pdqfb-loading">Nenhuma resposta pendente. 🎉</div>;
+  return (
+    <>
+      <div className="pdqfb-filahead">{itens.length} resposta(s) pendente(s)</div>
+      {itens.map((it) => (
+        <ReviewCard key={it.id} it={it} onAcao={onAcao} onPromover={onPromover} />
+      ))}
+    </>
+  );
+}
+
+function ReviewCard({
+  it,
+  onAcao,
+  onPromover,
+}: {
+  it: FilaItem;
+  onAcao: (id: string, a: 'revisar' | 'descartar') => void;
+  onPromover: (id: string, p: { titulo: string; resumo: string; lente: string | null; doi: string }) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [titulo, setTitulo] = useState('');
+  const [resumo, setResumo] = useState('');
+  const [lente, setLente] = useState<string | null>(null);
+  const [doi, setDoi] = useState('');
+  const fb = it.feedback === 'positivo' ? '👍' : it.feedback === 'negativo' ? '👎' : '';
+  const fontes = it.fontes_citadas ?? [];
+
+  return (
+    <div className="pdqfb-rcard">
+      <div className="rhead">
+        <span className="tier">{it.tier_usado}</span>
+        {fb ? <span>{fb}</span> : null}
+        <span className="rdata">{(it.created_at || '').slice(0, 10)}</span>
+      </div>
+      <div className="rperg">{it.pergunta}</div>
+      <div className="rresp">{it.resposta}</div>
+      {fontes.length > 0 ? (
+        <div className="rfontes">
+          {fontes.map((f, i) => (
+            <span key={i} className="fchip">
+              {(f.tipo || 'fonte') + (f.doi ? ` · ${f.doi}` : f.id ? ` · ${f.id}` : '')}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="racoes">
+        <button className="b ok" onClick={() => onAcao(it.id, 'revisar')}>
+          Revisada
+        </button>
+        <button className="b" onClick={() => onAcao(it.id, 'descartar')}>
+          Descartar
+        </button>
+        <button className="b pink" onClick={() => setAberto((v) => !v)}>
+          Ao acervo
+        </button>
+      </div>
+      {aberto ? (
+        <div className="promform">
+          <div className="hint">
+            Escreva a versão CERTA — vira fonte das próximas respostas (não copie a conversa)
+          </div>
+          <input className="pi" placeholder="Título do artigo" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+          <textarea
+            className="pi"
+            placeholder="Resumo curado e citável"
+            value={resumo}
+            onChange={(e) => setResumo(e.target.value)}
+          />
+          <div className="lentes">
+            {(['alinhado', 'ressalva', 'contra'] as const).map((l) => (
+              <button
+                key={l}
+                className={`lb${lente === l ? ' on' : ''}`}
+                onClick={() => setLente((cur) => (cur === l ? null : l))}
+              >
+                {l === 'alinhado' ? 'Alinhado' : l === 'ressalva' ? 'Com ressalva' : 'Contra'}
+              </button>
+            ))}
+          </div>
+          <input className="pi" placeholder="DOI (opcional)" value={doi} onChange={(e) => setDoi(e.target.value)} />
+          <button className="b pink" onClick={() => onPromover(it.id, { titulo, resumo, lente, doi })}>
+            Adicionar ao acervo
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const CSS = `
+.pdqfb-wrap{--pinky:#CE3B87;--velvet:#881D28;--cream-200:#F5E6E8;--off:#F8F4F3;--paper:#FFFFFF;--ink:#1A1416;--ink-2:#4E3F44;--ink-3:#8E7E83;--ink-4:#C9BDC0;--hairline:rgba(26,20,22,0.08);--success:#2F7A5A;--pink-300:#E07AAE;
+  max-width:1100px;margin:0 auto;padding:28px 24px 64px;color:var(--ink);background:var(--off);min-height:100vh;font-family:var(--font-manrope),-apple-system,Helvetica,Arial,sans-serif;}
+.pdqfb-wrap *{box-sizing:border-box;}
+.pdqfb-top{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px;}
+.pdqfb-eyebrow{font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.22em;text-transform:uppercase;color:var(--ink-3);}
+.pdqfb-h1{font-family:var(--font-fraunces),Georgia,serif;font-weight:600;font-size:40px;line-height:0.95;margin:6px 0 0;}
+.pdqfb-h1 span{color:var(--pinky);}
+.pdqfb-note{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.12em;color:var(--ink-3);text-transform:uppercase;}
+.pdqfb-tools{display:flex;gap:8px;margin-top:8px;}
+.pdqfb-tools button{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;background:var(--paper);border:1px solid var(--ink-4);color:var(--ink-2);border-radius:999px;padding:6px 12px;cursor:pointer;}
+.pdqfb-tabs{display:flex;gap:8px;margin:18px 0 22px;border-bottom:1px solid var(--hairline);}
+.pdqfb-tabs button{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink-3);background:none;border:none;border-bottom:2px solid transparent;padding:10px 6px;cursor:pointer;}
+.pdqfb-tabs button.on{color:var(--pinky);border-bottom-color:var(--pinky);}
+.pdqfb-err{color:var(--velvet);font-size:13px;margin:8px 0;}
+.pdqfb-loading{color:var(--ink-3);font-family:ui-monospace,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;padding:20px 0;}
+.pdqfb-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:4px 0 22px;}
+@media(max-width:760px){.pdqfb-kpis{grid-template-columns:repeat(2,1fr);}}
+.pdqfb-kpi{background:var(--paper);border:1px solid var(--hairline);border-radius:16px;padding:16px 18px;}
+.pdqfb-kpi.dark{background:var(--ink);color:var(--off);border-color:transparent;position:relative;overflow:hidden;}
+.pdqfb-kpi.dark::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--pinky);}
+.pdqfb-kpi .lbl{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-3);}
+.pdqfb-kpi.dark .lbl{color:var(--cream-200);}
+.pdqfb-kpi .val{font-family:var(--font-fraunces),Georgia,serif;font-weight:600;font-size:34px;line-height:1;margin-top:8px;}
+.pdqfb-kpi.dark .val{color:#fff;}
+.pdqfb-kpi .val small{font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.1em;margin-left:3px;}
+.pdqfb-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:760px){.pdqfb-grid{grid-template-columns:1fr;}}
+.pdqfb-panel{background:var(--paper);border:1px solid var(--hairline);border-radius:16px;padding:20px;}
+.pdqfb-panel h2{font-family:var(--font-fraunces),Georgia,serif;font-weight:600;font-size:20px;margin:0 0 14px;}
+.pdqfb-panel h2 small{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.14em;color:var(--ink-3);text-transform:uppercase;}
+.pdqfb-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;}
+.pdqfb-row .name{font-size:13px;color:var(--ink);}
+.pdqfb-row .name small{font-family:ui-monospace,monospace;font-size:9px;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;margin-left:6px;}
+.pdqfb-row .v{font-family:var(--font-fraunces),Georgia,serif;font-size:16px;}
+.pdqfb-bar{height:5px;background:var(--cream-200);border-radius:999px;overflow:hidden;margin-bottom:12px;}
+.pdqfb-bar>span{display:block;height:100%;border-radius:999px;background:var(--pinky);}
+.pdqfb-panel table{width:100%;border-collapse:collapse;font-size:13px;}
+.pdqfb-panel th{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-3);text-align:left;font-weight:500;padding:8px 6px;border-bottom:1px solid var(--hairline);}
+.pdqfb-panel td{padding:9px 6px;border-bottom:1px solid var(--hairline);}
+.pdqfb-panel td.num,.pdqfb-panel th.num{text-align:right;font-family:ui-monospace,monospace;}
+.pdqfb-spark{display:flex;align-items:flex-end;gap:4px;height:90px;margin-top:8px;}
+.pdqfb-spark .d{flex:1;background:var(--pink-300);border-radius:3px 3px 0 0;min-height:3px;position:relative;}
+.pdqfb-spark .d:hover{background:var(--pinky);}
+.pdqfb-spark .d .t{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-family:ui-monospace,monospace;font-size:8px;color:var(--ink-3);white-space:nowrap;margin-bottom:2px;opacity:0;}
+.pdqfb-spark .d:hover .t{opacity:1;}
+.pdqfb-filahead{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px;}
+.pdqfb-rcard{background:var(--paper);border:1px solid var(--hairline);border-radius:16px;padding:18px 20px;margin-bottom:16px;}
+.pdqfb-rcard .rhead{display:flex;align-items:center;gap:10px;font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px;}
+.pdqfb-rcard .rhead .tier{background:var(--cream-200);color:var(--ink-2);padding:2px 8px;border-radius:999px;}
+.pdqfb-rcard .rhead .rdata{margin-left:auto;}
+.pdqfb-rcard .rperg{font-family:var(--font-fraunces),Georgia,serif;font-style:italic;font-size:18px;color:var(--ink);margin-bottom:8px;}
+.pdqfb-rcard .rresp{font-size:14px;line-height:1.55;color:var(--ink-2);white-space:pre-wrap;max-height:240px;overflow:auto;background:var(--off);border-radius:10px;padding:12px;}
+.pdqfb-rcard .rfontes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.pdqfb-rcard .fchip{font-family:ui-monospace,monospace;font-size:9px;color:var(--ink-3);background:var(--cream-200);padding:2px 7px;border-radius:999px;}
+.pdqfb-rcard .racoes{display:flex;gap:8px;margin-top:14px;}
+.pdqfb-rcard .b{font-family:inherit;font-size:13px;font-weight:500;border:1px solid var(--ink-4);background:var(--paper);color:var(--ink-2);border-radius:10px;padding:8px 16px;cursor:pointer;}
+.pdqfb-rcard .b.ok{border-color:var(--success);color:var(--success);}
+.pdqfb-rcard .b.pink{background:var(--pinky);border-color:var(--pinky);color:#fff;}
+.pdqfb-rcard .promform{margin-top:14px;border-top:1px dashed var(--hairline);padding-top:14px;display:flex;flex-direction:column;gap:10px;}
+.pdqfb-rcard .promform .hint{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);}
+.pdqfb-rcard .pi{font-family:inherit;font-size:14px;color:var(--ink);background:var(--paper);border:1px solid var(--hairline);border-radius:10px;padding:10px 12px;width:100%;}
+.pdqfb-rcard textarea.pi{min-height:90px;resize:vertical;}
+.pdqfb-rcard .lentes{display:flex;gap:8px;}
+.pdqfb-rcard .lb{font-family:inherit;font-size:12px;border:1px solid var(--hairline);background:var(--paper);color:var(--ink-2);border-radius:999px;padding:6px 14px;cursor:pointer;}
+.pdqfb-rcard .lb.on{background:var(--pinky);border-color:var(--pinky);color:#fff;}
+`;
