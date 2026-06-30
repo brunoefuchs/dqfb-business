@@ -151,10 +151,15 @@ export default function PainelDqfb() {
       return;
     }
     try {
-      await api('', { method: 'POST', body: JSON.stringify({ action: 'promover', id, ...p }) });
+      const res = (await api('', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'promover', id, ...p }),
+      })) as { embedded?: boolean };
       removerDaFila(id);
       window.alert(
-        'Adicionado ao acervo! ⚠️ Para virar pesquisável, rode uma vez:\n\nnode scripts/etl-mel-backfill-embed.mjs',
+        res?.embedded
+          ? 'Adicionado ao acervo! ✅ Já está pesquisável pela Mel.'
+          : 'Adicionado ao acervo! ⚠️ Ficou sem busca por ora — avise o suporte técnico para indexar.',
       );
     } catch (e) {
       window.alert(String(e));
