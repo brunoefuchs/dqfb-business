@@ -199,7 +199,7 @@ export default function PainelDqfb() {
             Custo de IA
           </button>
           <button className={tab === 'revisar' ? 'on' : ''} onClick={() => trocarTab('revisar')}>
-            Revisar respostas
+            Mel respostas
           </button>
         </div>
 
