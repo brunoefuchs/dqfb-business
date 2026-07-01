@@ -572,6 +572,8 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
   const [salvando, setSalvando] = useState(false);
 
   const jaCurado = it.curado_status === 'curado' && it.curado_validado;
+  // Quando curado, o card mostra a decisão da FRAN (veredito + texto); a IA vira "base".
+  const vExibido = jaCurado && it.curado_veredito ? it.curado_veredito : it.veredito_ia;
 
   const abrir = (modo: 'confiar' | 'corrigir') => {
     if (modo === 'confiar') {
@@ -621,8 +623,8 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
           <span className="star" title={`${it.n_marcacoes} reporte(s) de aluna`}>⭐</span>
         ) : null}
         <span className="prod">{it.produto}</span>
-        <span className={`vchip ${vereditoTom(it.veredito_ia)}`}>
-          {VEREDITO_LABEL[it.veredito_ia] ?? it.veredito_ia}
+        <span className={`vchip ${vereditoTom(vExibido)}`}>
+          {VEREDITO_LABEL[vExibido] ?? vExibido}
         </span>
         <span className="meta">
           {it.n_avaliacoes}× · {FONTE_LABEL[it.fonte] ?? it.fonte}
@@ -630,7 +632,20 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
         <span className="estado">{estadoCuradoria(it)}</span>
       </div>
       {it.ingredientes ? <div className="aingr">{it.ingredientes}</div> : null}
-      {it.porque_ia ? <div className="aporque">“{it.porque_ia}”</div> : null}
+      {jaCurado && it.curado_porque ? (
+        <>
+          <div className="aporque curado">
+            <span className="tag fran">Fran</span>“{it.curado_porque}”
+          </div>
+          {it.porque_ia ? (
+            <div className="aporque ia-base">
+              <span className="tag ia">IA base</span>“{it.porque_ia}”
+            </div>
+          ) : null}
+        </>
+      ) : it.porque_ia ? (
+        <div className="aporque">“{it.porque_ia}”</div>
+      ) : null}
 
       {editor === null ? (
         <div className="aacts">
@@ -794,6 +809,11 @@ const CSS = `
 .pdqfb-acard .vchip.no{background:rgba(136,29,40,0.10);color:var(--velvet);}
 .pdqfb-acard .vchip.mid{background:var(--cream-200);color:var(--ink-2);}
 .pdqfb-acard .aporque{font-size:12.5px;color:var(--ink-2);margin-top:8px;line-height:1.5;font-style:italic;border-left:2px solid var(--cream-200);padding-left:10px;}
+.pdqfb-acard .aporque.curado{color:var(--ink);border-left-color:var(--pinky);font-style:normal;}
+.pdqfb-acard .aporque.ia-base{opacity:0.6;font-size:11.5px;margin-top:6px;}
+.pdqfb-acard .aporque .tag{display:inline-block;font-family:ui-monospace,monospace;font-size:8px;letter-spacing:0.1em;text-transform:uppercase;padding:2px 6px;border-radius:999px;margin-right:8px;vertical-align:middle;font-style:normal;}
+.pdqfb-acard .aporque .tag.fran{background:var(--pinky);color:#fff;}
+.pdqfb-acard .aporque .tag.ia{background:var(--cream-200);color:var(--ink-3);}
 .pdqfb-acard .aacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
 .pdqfb-acard .act{font-family:inherit;font-size:12.5px;font-weight:500;border:1px solid var(--ink-4);background:var(--paper);color:var(--ink-2);border-radius:10px;padding:7px 13px;cursor:pointer;}
 .pdqfb-acard .act:hover:not(:disabled){border-color:var(--ink-3);}
