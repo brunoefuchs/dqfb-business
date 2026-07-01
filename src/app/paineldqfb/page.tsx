@@ -50,6 +50,27 @@ interface FilaItem {
   feedback: string | null;
   created_at: string;
 }
+interface AvaliadorItem {
+  fatos_hash: string;
+  produto: string;
+  ingredientes: string;
+  veredito_ia: string;
+  fonte: string;
+  n_avaliacoes: number;
+  marcada_aluna: boolean;
+  n_marcacoes: number;
+  curado_status: string | null;
+  curado_validado: boolean;
+  curado_veredito: string | null;
+  usar_como_fewshot: boolean;
+  ultima: string;
+}
+interface AvaliadorResp {
+  itens: AvaliadorItem[];
+  total: number;
+  marcadas: number;
+  curados: number;
+}
 
 function usePainelApi() {
   const getPass = useCallback(() => {
@@ -88,9 +109,10 @@ function usePainelApi() {
 
 export default function PainelDqfb() {
   const api = usePainelApi();
-  const [tab, setTab] = useState<'custo' | 'revisar'>('custo');
+  const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador'>('custo');
   const [custo, setCusto] = useState<Custo | null>(null);
   const [fila, setFila] = useState<FilaItem[] | null>(null);
+  const [avaliador, setAvaliador] = useState<AvaliadorResp | null>(null);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
 
@@ -119,14 +141,33 @@ export default function PainelDqfb() {
     }
   }, [api]);
 
+  const loadAvaliador = useCallback(async () => {
+    setErro('');
+    setCarregando(true);
+    try {
+      setAvaliador((await api('?fila=avaliador')) as AvaliadorResp);
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setCarregando(false);
+    }
+  }, [api]);
+
   useEffect(() => {
     void loadCusto();
   }, [loadCusto]);
 
-  const trocarTab = (t: 'custo' | 'revisar') => {
+  const trocarTab = (t: 'custo' | 'revisar' | 'avaliador') => {
     setTab(t);
     if (t === 'custo') void loadCusto();
-    else void loadFila();
+    else if (t === 'revisar') void loadFila();
+    else void loadAvaliador();
+  };
+
+  const atualizarTab = () => {
+    if (tab === 'custo') void loadCusto();
+    else if (tab === 'revisar') void loadFila();
+    else void loadAvaliador();
   };
 
   const removerDaFila = (id: string) => setFila((f) => (f ? f.filter((x) => x.id !== id) : f));
@@ -178,7 +219,7 @@ export default function PainelDqfb() {
               Painel <span>DQFB</span>
             </h1>
             <div className="pdqfb-tools">
-              <button onClick={() => (tab === 'custo' ? loadCusto() : loadFila())}>Atualizar</button>
+              <button onClick={atualizarTab}>Atualizar</button>
               <button
                 onClick={() => {
                   localStorage.removeItem('dqfb_pass');
@@ -201,6 +242,9 @@ export default function PainelDqfb() {
           <button className={tab === 'revisar' ? 'on' : ''} onClick={() => trocarTab('revisar')}>
             Mel respostas
           </button>
+          <button className={tab === 'avaliador' ? 'on' : ''} onClick={() => trocarTab('avaliador')}>
+            Avaliador
+          </button>
         </div>
 
         {erro ? <div className="pdqfb-err">{erro}</div> : null}
@@ -210,6 +254,7 @@ export default function PainelDqfb() {
         {!carregando && tab === 'revisar' && fila ? (
           <RevisarView itens={fila} onAcao={acao} onPromover={promover} />
         ) : null}
+        {!carregando && tab === 'avaliador' && avaliador ? <AvaliadorView d={avaliador} /> : null}
       </div>
     </>
   );
@@ -447,6 +492,91 @@ function ReviewCard({
   );
 }
 
+// ─── Avaliador (Cozinha da Fran) — fatia read-only: lista por produto ─────────
+// Suporta as escalas de 3 (combina/depende/nao_combina) e 5/8 níveis (12.Q5.1).
+const VEREDITO_LABEL: Record<string, string> = {
+  combina: 'Combina',
+  depende: 'Depende',
+  nao_combina: 'Não combina',
+  gosto: 'Gosto',
+  rotina: 'Rotina',
+  excecao: 'Exceção',
+  prateleira: 'Prateleira',
+  nao_entra: 'Não entra',
+};
+const FONTE_LABEL: Record<string, string> = {
+  ia: 'IA',
+  cache: 'cache',
+  curado: 'curado',
+  deterministico: 'regra',
+};
+
+function vereditoTom(v: string): 'ok' | 'no' | 'mid' {
+  if (v === 'combina' || v === 'rotina') return 'ok';
+  if (v === 'nao_combina' || v === 'nao_entra' || v === 'prateleira') return 'no';
+  return 'mid';
+}
+
+function estadoCuradoria(it: AvaliadorItem): string {
+  if (it.curado_status === 'curado' && it.curado_validado) {
+    return it.usar_como_fewshot ? '✓ curado · exemplo' : '✓ curado';
+  }
+  if (it.curado_status === 'arquivado') return 'arquivado';
+  if (it.curado_status) return it.curado_status;
+  return 'pendente';
+}
+
+function AvaliadorView({ d }: { d: AvaliadorResp }) {
+  if (d.total === 0) {
+    return <div className="pdqfb-loading">Nenhum produto avaliado ainda.</div>;
+  }
+  return (
+    <>
+      <div className="pdqfb-kpis">
+        <div className="pdqfb-kpi dark">
+          <div className="lbl">Produtos avaliados</div>
+          <div className="val">{d.total}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">⭐ Marcados por aluna</div>
+          <div className="val">{d.marcadas}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Já curados</div>
+          <div className="val">{d.curados}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Pendentes</div>
+          <div className="val">{d.total - d.curados}</div>
+        </div>
+      </div>
+      <div className="pdqfb-filahead">
+        {d.total} produto(s) · ⭐ = aluna reportou · somente leitura (ações em breve)
+      </div>
+      {d.itens.map((it) => (
+        <div className="pdqfb-acard" key={it.fatos_hash}>
+          <div className="ahead">
+            {it.marcada_aluna ? (
+              <span className="star" title={`${it.n_marcacoes} reporte(s) de aluna`}>
+                ⭐
+              </span>
+            ) : null}
+            <span className="prod">{it.produto}</span>
+            <span className={`vchip ${vereditoTom(it.veredito_ia)}`}>
+              {VEREDITO_LABEL[it.veredito_ia] ?? it.veredito_ia}
+            </span>
+            <span className="meta">
+              {it.n_avaliacoes}× · {FONTE_LABEL[it.fonte] ?? it.fonte}
+            </span>
+            <span className="estado">{estadoCuradoria(it)}</span>
+          </div>
+          {it.ingredientes ? <div className="aingr">{it.ingredientes}</div> : null}
+        </div>
+      ))}
+    </>
+  );
+}
+
 const CSS = `
 .pdqfb-wrap{--pinky:#CE3B87;--velvet:#881D28;--cream-200:#F5E6E8;--off:#F8F4F3;--paper:#FFFFFF;--ink:#1A1416;--ink-2:#4E3F44;--ink-3:#8E7E83;--ink-4:#C9BDC0;--hairline:rgba(26,20,22,0.08);--success:#2F7A5A;--pink-300:#E07AAE;
   max-width:1100px;margin:0 auto;padding:28px 24px 64px;color:var(--ink);background:var(--off);min-height:100vh;font-family:var(--font-manrope),-apple-system,Helvetica,Arial,sans-serif;}
@@ -513,4 +643,15 @@ const CSS = `
 .pdqfb-rcard .lentes{display:flex;gap:8px;}
 .pdqfb-rcard .lb{font-family:inherit;font-size:12px;border:1px solid var(--hairline);background:var(--paper);color:var(--ink-2);border-radius:999px;padding:6px 14px;cursor:pointer;}
 .pdqfb-rcard .lb.on{background:var(--pinky);border-color:var(--pinky);color:#fff;}
+.pdqfb-acard{background:var(--paper);border:1px solid var(--hairline);border-radius:14px;padding:14px 16px;margin-bottom:10px;}
+.pdqfb-acard .ahead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.pdqfb-acard .star{font-size:14px;line-height:1;}
+.pdqfb-acard .prod{font-family:var(--font-fraunces),Georgia,serif;font-size:16px;font-weight:600;color:var(--ink);}
+.pdqfb-acard .meta{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);}
+.pdqfb-acard .estado{margin-left:auto;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-2);background:var(--cream-200);padding:3px 9px;border-radius:999px;}
+.pdqfb-acard .aingr{font-size:12px;color:var(--ink-3);margin-top:6px;line-height:1.45;}
+.pdqfb-acard .vchip{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;padding:3px 9px;border-radius:999px;}
+.pdqfb-acard .vchip.ok{background:rgba(47,122,90,0.12);color:var(--success);}
+.pdqfb-acard .vchip.no{background:rgba(136,29,40,0.10);color:var(--velvet);}
+.pdqfb-acard .vchip.mid{background:var(--cream-200);color:var(--ink-2);}
 `;
