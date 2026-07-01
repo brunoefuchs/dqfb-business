@@ -55,6 +55,7 @@ interface AvaliadorItem {
   produto: string;
   ingredientes: string;
   veredito_ia: string;
+  porque_ia: string;
   fonte: string;
   n_avaliacoes: number;
   marcada_aluna: boolean;
@@ -62,6 +63,7 @@ interface AvaliadorItem {
   curado_status: string | null;
   curado_validado: boolean;
   curado_veredito: string | null;
+  curado_porque: string | null;
   usar_como_fewshot: boolean;
   ultima: string;
 }
@@ -207,6 +209,30 @@ export default function PainelDqfb() {
     }
   };
 
+  // Avaliador (Cozinha da Fran) — curar/ignorar/exemplo. Retorna true no sucesso
+  // (a tela fecha o editor); erros de voz voltam 200 c/ {error, detalhes}.
+  const acaoAvaliador = async (body: Record<string, unknown>): Promise<boolean> => {
+    try {
+      const res = (await api('', { method: 'POST', body: JSON.stringify(body) })) as {
+        error?: string;
+        detalhes?: string;
+        warnings?: string[];
+      };
+      if (res?.error) {
+        window.alert(res.detalhes || res.error);
+        return false;
+      }
+      if (res?.warnings?.length) {
+        window.alert('Salvo com avisos:\n• ' + res.warnings.join('\n• '));
+      }
+      await loadAvaliador();
+      return true;
+    } catch (e) {
+      window.alert(String(e));
+      return false;
+    }
+  };
+
   return (
     <>
       <meta name="robots" content="noindex" />
@@ -254,7 +280,9 @@ export default function PainelDqfb() {
         {!carregando && tab === 'revisar' && fila ? (
           <RevisarView itens={fila} onAcao={acao} onPromover={promover} />
         ) : null}
-        {!carregando && tab === 'avaliador' && avaliador ? <AvaliadorView d={avaliador} /> : null}
+        {!carregando && tab === 'avaliador' && avaliador ? (
+          <AvaliadorView d={avaliador} onAcao={acaoAvaliador} />
+        ) : null}
       </div>
     </>
   );
@@ -526,7 +554,131 @@ function estadoCuradoria(it: AvaliadorItem): string {
   return 'pendente';
 }
 
-function AvaliadorView({ d }: { d: AvaliadorResp }) {
+// Os 5 níveis oficiais (12.Q5.1) — usados no <select> do editor de curadoria.
+const NIVEIS: ReadonlyArray<{ v: string; label: string }> = [
+  { v: 'gosto', label: 'Dessa eu gosto (1)' },
+  { v: 'rotina', label: 'Uso, mas fico de olho (2)' },
+  { v: 'excecao', label: 'Somente como exceção (3)' },
+  { v: 'prateleira', label: 'Deixo na prateleira (4)' },
+  { v: 'nao_entra', label: 'Não entra de jeito nenhum (5)' },
+];
+
+type AcaoAvaliador = (body: Record<string, unknown>) => Promise<boolean>;
+
+function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliador }) {
+  const [editor, setEditor] = useState<null | 'confiar' | 'corrigir'>(null);
+  const [veredito, setVeredito] = useState('');
+  const [porque, setPorque] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  const jaCurado = it.curado_status === 'curado' && it.curado_validado;
+
+  const abrir = (modo: 'confiar' | 'corrigir') => {
+    if (modo === 'confiar') {
+      // decisão B: traz o veredito + o texto da IA para a Fran revisar e assinar.
+      setVeredito(it.veredito_ia);
+      setPorque(it.porque_ia || '');
+    } else {
+      setVeredito(it.curado_veredito || it.veredito_ia);
+      setPorque(it.curado_porque || '');
+    }
+    setEditor(modo);
+  };
+
+  const salvar = async () => {
+    if (!veredito || !porque.trim()) {
+      window.alert('Escolha o veredito e escreva o porquê.');
+      return;
+    }
+    setSalvando(true);
+    const ok = await onAcao({
+      action: 'curar',
+      fatos_hash: it.fatos_hash,
+      veredito,
+      porque,
+      produto_nome: it.produto,
+    });
+    setSalvando(false);
+    if (ok) setEditor(null);
+  };
+
+  const ignorar = async () => {
+    if (!window.confirm('Arquivar este produto? Sai da fila e não entra no treino da IA.')) return;
+    await onAcao({ action: 'ignorar', fatos_hash: it.fatos_hash });
+  };
+
+  const toggleExemplo = () => onAcao({ action: 'exemplo', fatos_hash: it.fatos_hash, on: !it.usar_como_fewshot });
+
+  // Mantém o veredito atual como opção se ele for um dos 3 antigos (backward-compat).
+  const opcoes = !veredito || NIVEIS.some((n) => n.v === veredito)
+    ? NIVEIS
+    : [{ v: veredito, label: `${VEREDITO_LABEL[veredito] ?? veredito} (atual)` }, ...NIVEIS];
+
+  return (
+    <div className="pdqfb-acard">
+      <div className="ahead">
+        {it.marcada_aluna ? (
+          <span className="star" title={`${it.n_marcacoes} reporte(s) de aluna`}>⭐</span>
+        ) : null}
+        <span className="prod">{it.produto}</span>
+        <span className={`vchip ${vereditoTom(it.veredito_ia)}`}>
+          {VEREDITO_LABEL[it.veredito_ia] ?? it.veredito_ia}
+        </span>
+        <span className="meta">
+          {it.n_avaliacoes}× · {FONTE_LABEL[it.fonte] ?? it.fonte}
+        </span>
+        <span className="estado">{estadoCuradoria(it)}</span>
+      </div>
+      {it.ingredientes ? <div className="aingr">{it.ingredientes}</div> : null}
+      {it.porque_ia ? <div className="aporque">“{it.porque_ia}”</div> : null}
+
+      {editor === null ? (
+        <div className="aacts">
+          <button className="act ok" onClick={() => abrir('confiar')}>✅ Confiar</button>
+          <button className="act" onClick={() => abrir('corrigir')}>✏️ Corrigir</button>
+          <button className="act" onClick={ignorar}>🗄️ Ignorar</button>
+          <button
+            className={`act ${it.usar_como_fewshot ? 'on' : ''}`}
+            disabled={!jaCurado}
+            onClick={toggleExemplo}
+            title={jaCurado ? 'Usar como exemplo (few-shot)' : 'Cure antes de marcar como exemplo'}
+          >
+            ⭐ Exemplo{it.usar_como_fewshot ? ' ✓' : ''}
+          </button>
+        </div>
+      ) : (
+        <div className="aedit">
+          <div className="ehint">
+            {editor === 'confiar'
+              ? 'Confiar: revise o texto da IA e assine como a sua opinião.'
+              : 'Corrigir: escolha o veredito e escreva o porquê na sua voz.'}
+          </div>
+          <label className="elbl">Veredito</label>
+          <select value={veredito} onChange={(e) => setVeredito(e.target.value)}>
+            {opcoes.map((o) => (
+              <option key={o.v} value={o.v}>{o.label}</option>
+            ))}
+          </select>
+          <label className="elbl">Porquê — vira o texto curado que a aluna vê</label>
+          <textarea
+            rows={4}
+            value={porque}
+            onChange={(e) => setPorque(e.target.value)}
+            placeholder="Ex.: Esse produto usa maltitol e eritritol…"
+          />
+          <div className="ebtns">
+            <button className="act ok" disabled={salvando} onClick={salvar}>
+              {salvando ? 'Salvando…' : 'Salvar curadoria'}
+            </button>
+            <button className="act" disabled={salvando} onClick={() => setEditor(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AvaliadorView({ d, onAcao }: { d: AvaliadorResp; onAcao: AcaoAvaliador }) {
   if (d.total === 0) {
     return <div className="pdqfb-loading">Nenhum produto avaliado ainda.</div>;
   }
@@ -551,27 +703,10 @@ function AvaliadorView({ d }: { d: AvaliadorResp }) {
         </div>
       </div>
       <div className="pdqfb-filahead">
-        {d.total} produto(s) · ⭐ = aluna reportou · somente leitura (ações em breve)
+        {d.total} produto(s) · ⭐ = aluna reportou · ✅ confiar · ✏️ corrigir · 🗄️ ignorar · ⭐ exemplo
       </div>
       {d.itens.map((it) => (
-        <div className="pdqfb-acard" key={it.fatos_hash}>
-          <div className="ahead">
-            {it.marcada_aluna ? (
-              <span className="star" title={`${it.n_marcacoes} reporte(s) de aluna`}>
-                ⭐
-              </span>
-            ) : null}
-            <span className="prod">{it.produto}</span>
-            <span className={`vchip ${vereditoTom(it.veredito_ia)}`}>
-              {VEREDITO_LABEL[it.veredito_ia] ?? it.veredito_ia}
-            </span>
-            <span className="meta">
-              {it.n_avaliacoes}× · {FONTE_LABEL[it.fonte] ?? it.fonte}
-            </span>
-            <span className="estado">{estadoCuradoria(it)}</span>
-          </div>
-          {it.ingredientes ? <div className="aingr">{it.ingredientes}</div> : null}
-        </div>
+        <AvaliadorCard key={it.fatos_hash} it={it} onAcao={onAcao} />
       ))}
     </>
   );
@@ -654,4 +789,17 @@ const CSS = `
 .pdqfb-acard .vchip.ok{background:rgba(47,122,90,0.12);color:var(--success);}
 .pdqfb-acard .vchip.no{background:rgba(136,29,40,0.10);color:var(--velvet);}
 .pdqfb-acard .vchip.mid{background:var(--cream-200);color:var(--ink-2);}
+.pdqfb-acard .aporque{font-size:12.5px;color:var(--ink-2);margin-top:8px;line-height:1.5;font-style:italic;border-left:2px solid var(--cream-200);padding-left:10px;}
+.pdqfb-acard .aacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+.pdqfb-acard .act{font-family:inherit;font-size:12.5px;font-weight:500;border:1px solid var(--ink-4);background:var(--paper);color:var(--ink-2);border-radius:10px;padding:7px 13px;cursor:pointer;}
+.pdqfb-acard .act:hover:not(:disabled){border-color:var(--ink-3);}
+.pdqfb-acard .act.ok{border-color:var(--success);color:var(--success);}
+.pdqfb-acard .act.on{background:var(--pinky);border-color:var(--pinky);color:#fff;}
+.pdqfb-acard .act:disabled{opacity:0.45;cursor:not-allowed;}
+.pdqfb-acard .aedit{margin-top:12px;border-top:1px dashed var(--hairline);padding-top:12px;display:flex;flex-direction:column;gap:8px;}
+.pdqfb-acard .aedit .ehint{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);}
+.pdqfb-acard .aedit .elbl{font-size:11px;color:var(--ink-3);margin-top:2px;}
+.pdqfb-acard .aedit select,.pdqfb-acard .aedit textarea{font-family:inherit;font-size:14px;color:var(--ink);background:var(--paper);border:1px solid var(--hairline);border-radius:10px;padding:9px 12px;width:100%;}
+.pdqfb-acard .aedit textarea{resize:vertical;line-height:1.5;}
+.pdqfb-acard .aedit .ebtns{display:flex;gap:8px;margin-top:4px;}
 `;
