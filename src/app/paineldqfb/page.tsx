@@ -641,9 +641,13 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
             className={`act ${it.usar_como_fewshot ? 'on' : ''}`}
             disabled={!jaCurado}
             onClick={toggleExemplo}
-            title={jaCurado ? 'Usar como exemplo (few-shot)' : 'Cure antes de marcar como exemplo'}
+            title={
+              jaCurado
+                ? 'Guarda este caso para o treino futuro da IA. Ainda NÃO muda a avaliação — a marcação fica salva para quando o treino for ligado.'
+                : 'Confie ou corrija o veredito antes de guardar como exemplo de treino.'
+            }
           >
-            ⭐ Exemplo{it.usar_como_fewshot ? ' ✓' : ''}
+            ⭐ Exemplo{it.usar_como_fewshot ? ' ✓ guardado' : ''}
           </button>
         </div>
       ) : (
@@ -703,7 +707,7 @@ function AvaliadorView({ d, onAcao }: { d: AvaliadorResp; onAcao: AcaoAvaliador 
         </div>
       </div>
       <div className="pdqfb-filahead">
-        {d.total} produto(s) · ⭐ = aluna reportou · ✅ confiar · ✏️ corrigir · 🗄️ ignorar · ⭐ exemplo
+        {d.total} produto(s) · ⭐ = aluna reportou · ✅ confiar · ✏️ corrigir · 🗄️ ignorar · ⭐ exemplo (guarda p/ treino futuro da IA)
       </div>
       {d.itens.map((it) => (
         <AvaliadorCard key={it.fatos_hash} it={it} onAcao={onAcao} />
