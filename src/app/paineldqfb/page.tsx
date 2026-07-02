@@ -272,7 +272,13 @@ export default function PainelDqfb() {
   // requer_confirmacao com o alvo — mostramos e reenviamos com confirmar:true).
   const acaoLuSimples = async (action: 'lu_confiar' | 'lu_ignorar' | 'lu_exemplo', id: string) => {
     try {
-      await api('', { method: 'POST', body: JSON.stringify({ action, id }) });
+      const res = (await api('', { method: 'POST', body: JSON.stringify({ action, id }) })) as {
+        ensinou?: boolean;
+      } | undefined;
+      // AC-9: Confiar em resposta GERADA sem parecida no acervo → virou FAQ (a Lu aprendeu).
+      if (action === 'lu_confiar' && res?.ensinou) {
+        window.alert('Além de confiar, guardei essa resposta no acervo — a próxima aluna recebe na hora. ✅');
+      }
       setLu((d) => (d ? { ...d, itens: d.itens.filter((x) => x.id !== id), pendentes: d.pendentes - 1 } : d));
     } catch (e) {
       window.alert(String(e));
