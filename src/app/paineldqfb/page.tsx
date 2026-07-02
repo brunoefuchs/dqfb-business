@@ -64,6 +64,7 @@ interface AvaliadorItem {
   curado_validado: boolean;
   curado_veredito: string | null;
   curado_porque: string | null;
+  curado_em: string | null;
   usar_como_fewshot: boolean;
   ultima: string;
 }
@@ -554,6 +555,19 @@ function estadoCuradoria(it: AvaliadorItem): string {
   return 'pendente';
 }
 
+// Data em fuso BR (America/Sao_Paulo) — o dia bate com o calendário da Fran.
+function fmtData(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
 // Os 5 níveis oficiais (12.Q5.1) — usados no <select> do editor de curadoria.
 const NIVEIS: ReadonlyArray<{ v: string; label: string }> = [
   { v: 'gosto', label: 'Dessa eu gosto (1)' },
@@ -646,6 +660,11 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
       ) : it.porque_ia ? (
         <div className="aporque">“{it.porque_ia}”</div>
       ) : null}
+
+      <div className="adatas">
+        Avaliado em {fmtData(it.ultima)}
+        {jaCurado && it.curado_em ? ` · Curado em ${fmtData(it.curado_em)}` : ''}
+      </div>
 
       {editor === null ? (
         <div className="aacts">
@@ -814,6 +833,7 @@ const CSS = `
 .pdqfb-acard .aporque .tag{display:inline-block;font-family:ui-monospace,monospace;font-size:8px;letter-spacing:0.1em;text-transform:uppercase;padding:2px 6px;border-radius:999px;margin-right:8px;vertical-align:middle;font-style:normal;}
 .pdqfb-acard .aporque .tag.fran{background:var(--pinky);color:#fff;}
 .pdqfb-acard .aporque .tag.ia{background:var(--cream-200);color:var(--ink-3);}
+.pdqfb-acard .adatas{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);margin-top:10px;}
 .pdqfb-acard .aacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
 .pdqfb-acard .act{font-family:inherit;font-size:12.5px;font-weight:500;border:1px solid var(--ink-4);background:var(--paper);color:var(--ink-2);border-radius:10px;padding:7px 13px;cursor:pointer;}
 .pdqfb-acard .act:hover:not(:disabled){border-color:var(--ink-3);}
