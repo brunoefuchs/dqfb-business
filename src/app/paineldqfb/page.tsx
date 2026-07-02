@@ -175,17 +175,18 @@ export default function PainelDqfb() {
     }
   }, [api]);
 
-  const loadLu = useCallback(async () => {
+  const [luStatus, setLuStatus] = useState<'pendente' | 'revisadas'>('pendente');
+  const loadLu = useCallback(async (st?: 'pendente' | 'revisadas') => {
     setErro('');
     setCarregando(true);
     try {
-      setLu((await api('?fila=lu')) as LuResp);
+      setLu((await api('?fila=lu&status=' + (st ?? luStatus))) as LuResp);
     } catch (e) {
       setErro(String(e));
     } finally {
       setCarregando(false);
     }
-  }, [api]);
+  }, [api, luStatus]);
 
   useEffect(() => {
     void loadCusto();
@@ -280,6 +281,22 @@ export default function PainelDqfb() {
         window.alert('Além de confiar, guardei essa resposta no acervo — a próxima aluna recebe na hora. ✅');
       }
       setLu((d) => (d ? { ...d, itens: d.itens.filter((x) => x.id !== id), pendentes: d.pendentes - 1 } : d));
+    } catch (e) {
+      window.alert(String(e));
+    }
+  };
+
+  const reabrirLu = async (id: string) => {
+    try {
+      const res = (await api('', { method: 'POST', body: JSON.stringify({ action: 'lu_reabrir', id }) })) as {
+        desfeito?: string;
+      };
+      if (res?.desfeito === 'faq-criada-rejeitada') {
+        window.alert('Reaberta — e a resposta que tinha entrado no acervo foi removida. ↩️');
+      } else if (res?.desfeito === 'resposta-anterior-restaurada') {
+        window.alert('Reaberta — e a resposta do acervo voltou ao texto anterior. ↩️');
+      }
+      void loadLu();
     } catch (e) {
       window.alert(String(e));
     }
@@ -393,7 +410,17 @@ export default function PainelDqfb() {
           <AvaliadorView d={avaliador} onAcao={acaoAvaliador} />
         ) : null}
         {!carregando && tab === 'lu' && lu ? (
-          <LuView d={lu} onSimples={acaoLuSimples} onCorrigir={corrigirLu} />
+          <LuView
+            d={lu}
+            status={luStatus}
+            onStatus={(st) => {
+              setLuStatus(st);
+              void loadLu(st);
+            }}
+            onSimples={acaoLuSimples}
+            onCorrigir={corrigirLu}
+            onReabrir={reabrirLu}
+          />
         ) : null}
       </div>
     </>
@@ -866,23 +893,47 @@ function AvaliadorView({ d, onAcao }: { d: AvaliadorResp; onAcao: AcaoAvaliador 
 // a UX do Avaliador que a Fran já conhece; Corrigir abre editor com o texto da Lu.
 function LuView({
   d,
+  status,
+  onStatus,
   onSimples,
   onCorrigir,
+  onReabrir,
 }: {
   d: LuResp;
+  status: 'pendente' | 'revisadas';
+  onStatus: (st: 'pendente' | 'revisadas') => void;
   onSimples: (a: 'lu_confiar' | 'lu_ignorar' | 'lu_exemplo', id: string) => Promise<void>;
   onCorrigir: (id: string, resposta: string) => Promise<boolean>;
+  onReabrir: (id: string) => void;
 }) {
-  if (d.pendentes === 0) {
-    return <div className="pdqfb-loading">Nenhuma resposta pendente — a Lu está em dia. 💛</div>;
+  const filtro = (
+    <div className="pdqfb-tabs" style={{ margin: '0 0 14px', borderBottom: 'none' }}>
+      <button className={status === 'pendente' ? 'on' : ''} onClick={() => onStatus('pendente')}>
+        Pendentes
+      </button>
+      <button className={status === 'revisadas' ? 'on' : ''} onClick={() => onStatus('revisadas')}>
+        Já avaliadas
+      </button>
+    </div>
+  );
+  if (d.itens.length === 0) {
+    return (
+      <>
+        {filtro}
+        <div className="pdqfb-loading">
+          {status === 'pendente' ? 'Nenhuma resposta pendente — a Lu está em dia. 💛' : 'Nenhuma resposta avaliada ainda.'}
+        </div>
+      </>
+    );
   }
   const negativas = d.itens.filter((x) => x.thumbs === -1).length;
   return (
     <>
+      {filtro}
       <div className="pdqfb-kpis">
         <div className="pdqfb-kpi dark">
-          <div className="lbl">Respostas pendentes</div>
-          <div className="val">{d.pendentes}</div>
+          <div className="lbl">{status === 'pendente' ? 'Respostas pendentes' : 'Já avaliadas'}</div>
+          <div className="val">{d.itens.length}</div>
         </div>
         <div className="pdqfb-kpi">
           <div className="lbl">👎 da aluna (olhar primeiro)</div>
@@ -901,7 +952,7 @@ function LuView({
         {d.pendentes} resposta(s) · 👎 aparecem primeiro · ✅ confiar · ✏️ corrigir (ensina a Lu) · 🗄️ ignorar · ⭐ exemplo
       </div>
       {d.itens.map((it) => (
-        <LuCard key={it.id} it={it} onSimples={onSimples} onCorrigir={onCorrigir} />
+        <LuCard key={it.id} it={it} onSimples={onSimples} onCorrigir={onCorrigir} onReabrir={onReabrir} />
       ))}
     </>
   );
@@ -911,10 +962,12 @@ function LuCard({
   it,
   onSimples,
   onCorrigir,
+  onReabrir,
 }: {
   it: LuItem;
   onSimples: (a: 'lu_confiar' | 'lu_ignorar' | 'lu_exemplo', id: string) => Promise<void>;
   onCorrigir: (id: string, resposta: string) => Promise<boolean>;
+  onReabrir: (id: string) => void;
 }) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(it.resposta);
@@ -946,6 +999,11 @@ function LuCard({
         {it.thumbs === -1 ? <span className="tier" style={{ background: '#F8E2E4', color: '#881D28' }}>👎 aluna</span> : null}
         {it.thumbs === 1 ? <span className="tier" style={{ background: '#E3F0E9', color: '#2F7A5A' }}>👍 aluna</span> : null}
         {qa != null && Number.isFinite(qa) ? <span className="tier">match {Math.round(qa * 100)}%</span> : null}
+        {it.review_status !== 'pendente' ? (
+          <span className="tier" style={{ background: '#EEE9F5', color: '#5B4B7A' }}>
+            {it.review_status === 'revisada' ? '✅ confiada' : it.review_status === 'promovida_faq' ? '✏️ corrigida' : it.review_status === 'descartada' ? '🗄️ ignorada' : '⭐ exemplo'}
+          </span>
+        ) : null}
         <span className="rdata">{fmtData(it.created_at)}</span>
       </div>
       <div className="rperg">{it.pergunta}</div>
@@ -968,6 +1026,22 @@ function LuCard({
             </button>
           </div>
         </div>
+      ) : it.review_status !== 'pendente' ? (
+        <>
+          <div className="rresp">{it.resposta}</div>
+          <div className="racoes">
+            <button
+              className="b"
+              onClick={() => {
+                if (window.confirm('Reabrir esta resposta? Ela volta para a fila — e se a ação tinha guardado algo no acervo, o desfazer é automático.')) {
+                  onReabrir(it.id);
+                }
+              }}
+            >
+              ↩️ Reabrir
+            </button>
+          </div>
+        </>
       ) : (
         <>
           <div className="rresp">{it.resposta}</div>
