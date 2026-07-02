@@ -75,6 +75,24 @@ interface AvaliadorResp {
   curados: number;
 }
 
+// Lu — Dúvidas Receitas (Story 10.10 do app-dqfb). Payload da ?fila=lu.
+interface LuItem {
+  id: string;
+  conversa_id: string | null;
+  tipo: string; // 'faq' | 'geracao' | 'abstencao' | ...
+  pergunta: string;
+  resposta: string;
+  thumbs: number | null; // -1 | 1 | null
+  review_status: string;
+  fontes: { fonte_tipo?: string; id?: string }[] | null;
+  scores: { qaScore?: number | string | null } | null;
+  created_at: string;
+}
+interface LuResp {
+  itens: LuItem[];
+  pendentes: number;
+}
+
 function usePainelApi() {
   const getPass = useCallback(() => {
     let p = localStorage.getItem('dqfb_pass');
@@ -112,10 +130,11 @@ function usePainelApi() {
 
 export default function PainelDqfb() {
   const api = usePainelApi();
-  const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador'>('custo');
+  const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu'>('custo');
   const [custo, setCusto] = useState<Custo | null>(null);
   const [fila, setFila] = useState<FilaItem[] | null>(null);
   const [avaliador, setAvaliador] = useState<AvaliadorResp | null>(null);
+  const [lu, setLu] = useState<LuResp | null>(null);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
 
@@ -156,20 +175,34 @@ export default function PainelDqfb() {
     }
   }, [api]);
 
+  const loadLu = useCallback(async () => {
+    setErro('');
+    setCarregando(true);
+    try {
+      setLu((await api('?fila=lu')) as LuResp);
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setCarregando(false);
+    }
+  }, [api]);
+
   useEffect(() => {
     void loadCusto();
   }, [loadCusto]);
 
-  const trocarTab = (t: 'custo' | 'revisar' | 'avaliador') => {
+  const trocarTab = (t: 'custo' | 'revisar' | 'avaliador' | 'lu') => {
     setTab(t);
     if (t === 'custo') void loadCusto();
     else if (t === 'revisar') void loadFila();
+    else if (t === 'lu') void loadLu();
     else void loadAvaliador();
   };
 
   const atualizarTab = () => {
     if (tab === 'custo') void loadCusto();
     else if (tab === 'revisar') void loadFila();
+    else if (tab === 'lu') void loadLu();
     else void loadAvaliador();
   };
 
@@ -234,6 +267,72 @@ export default function PainelDqfb() {
     }
   };
 
+  // Lu — Dúvidas Receitas: Confiar/Ignorar/Exemplo são diretas; Corrigir tem o fluxo
+  // preview-then-confirm (quando o backend detecta vizinha ≥0,90, a 1ª chamada volta
+  // requer_confirmacao com o alvo — mostramos e reenviamos com confirmar:true).
+  const acaoLuSimples = async (action: 'lu_confiar' | 'lu_ignorar' | 'lu_exemplo', id: string) => {
+    try {
+      await api('', { method: 'POST', body: JSON.stringify({ action, id }) });
+      setLu((d) => (d ? { ...d, itens: d.itens.filter((x) => x.id !== id), pendentes: d.pendentes - 1 } : d));
+    } catch (e) {
+      window.alert(String(e));
+    }
+  };
+
+  const corrigirLu = async (id: string, resposta: string): Promise<boolean> => {
+    try {
+      const res = (await api('', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'lu_corrigir', id, resposta }),
+      })) as {
+        ok?: boolean;
+        requer_confirmacao?: boolean;
+        modo?: string;
+        modo_previsto?: string;
+        vizinha_pergunta?: string;
+        vizinha_resposta_atual?: string | null;
+        score?: number;
+        error?: string;
+      };
+      if (res?.error) {
+        window.alert(res.error);
+        return false;
+      }
+      if (res?.requer_confirmacao) {
+        const okSubstituir = window.confirm(
+          'Já existe uma resposta MUITO parecida no acervo (' +
+            Math.round((res.score ?? 0) * 100) +
+            '% igual):\n\nPergunta dela: ' +
+            (res.vizinha_pergunta ?? '') +
+            '\n\nResposta atual dela: ' +
+            (res.vizinha_resposta_atual ?? '') +
+            '\n\nSubstituir o texto dessa resposta pelo seu? (Cancelar = não mexe em nada)',
+        );
+        if (!okSubstituir) return false;
+        const res2 = (await api('', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'lu_corrigir', id, resposta, confirmar: true }),
+        })) as { ok?: boolean; modo?: string; error?: string };
+        if (res2?.error) {
+          window.alert(res2.error);
+          return false;
+        }
+        window.alert('Atualizei a resposta que já existia — a Lu vai responder com o seu texto. ✅');
+      } else if (res?.modo === 'faq-atualizada') {
+        window.alert('Atualizei a resposta que a Lu tinha usado — já vale na próxima pergunta. ✅');
+      } else if (res?.modo === 'faq-nova') {
+        window.alert('Criei uma resposta nova no acervo com a sua correção — já pesquisável. ✅');
+      } else {
+        window.alert('Correção salva. ✅');
+      }
+      setLu((d) => (d ? { ...d, itens: d.itens.filter((x) => x.id !== id), pendentes: d.pendentes - 1 } : d));
+      return true;
+    } catch (e) {
+      window.alert(String(e));
+      return false;
+    }
+  };
+
   return (
     <>
       <meta name="robots" content="noindex" />
@@ -272,6 +371,9 @@ export default function PainelDqfb() {
           <button className={tab === 'avaliador' ? 'on' : ''} onClick={() => trocarTab('avaliador')}>
             Avaliador
           </button>
+          <button className={tab === 'lu' ? 'on' : ''} onClick={() => trocarTab('lu')}>
+            Lu · Dúvidas Receitas
+          </button>
         </div>
 
         {erro ? <div className="pdqfb-err">{erro}</div> : null}
@@ -283,6 +385,9 @@ export default function PainelDqfb() {
         ) : null}
         {!carregando && tab === 'avaliador' && avaliador ? (
           <AvaliadorView d={avaliador} onAcao={acaoAvaliador} />
+        ) : null}
+        {!carregando && tab === 'lu' && lu ? (
+          <LuView d={lu} onSimples={acaoLuSimples} onCorrigir={corrigirLu} />
         ) : null}
       </div>
     </>
@@ -747,6 +852,143 @@ function AvaliadorView({ d, onAcao }: { d: AvaliadorResp; onAcao: AcaoAvaliador 
         <AvaliadorCard key={it.fatos_hash} it={it} onAcao={onAcao} />
       ))}
     </>
+  );
+}
+
+// ─── Lu — Dúvidas Receitas (Story 10.10) ──────────────────────────────────────
+// Fila já vem ordenada do backend (👎 primeiro, depois recentes). As 4 ações espelham
+// a UX do Avaliador que a Fran já conhece; Corrigir abre editor com o texto da Lu.
+function LuView({
+  d,
+  onSimples,
+  onCorrigir,
+}: {
+  d: LuResp;
+  onSimples: (a: 'lu_confiar' | 'lu_ignorar' | 'lu_exemplo', id: string) => Promise<void>;
+  onCorrigir: (id: string, resposta: string) => Promise<boolean>;
+}) {
+  if (d.pendentes === 0) {
+    return <div className="pdqfb-loading">Nenhuma resposta pendente — a Lu está em dia. 💛</div>;
+  }
+  const negativas = d.itens.filter((x) => x.thumbs === -1).length;
+  return (
+    <>
+      <div className="pdqfb-kpis">
+        <div className="pdqfb-kpi dark">
+          <div className="lbl">Respostas pendentes</div>
+          <div className="val">{d.pendentes}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">👎 da aluna (olhar primeiro)</div>
+          <div className="val">{negativas}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">👍 da aluna</div>
+          <div className="val">{d.itens.filter((x) => x.thumbs === 1).length}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Sem feedback</div>
+          <div className="val">{d.itens.filter((x) => x.thumbs == null).length}</div>
+        </div>
+      </div>
+      <div className="pdqfb-filahead">
+        {d.pendentes} resposta(s) · 👎 aparecem primeiro · ✅ confiar · ✏️ corrigir (ensina a Lu) · 🗄️ ignorar · ⭐ exemplo
+      </div>
+      {d.itens.map((it) => (
+        <LuCard key={it.id} it={it} onSimples={onSimples} onCorrigir={onCorrigir} />
+      ))}
+    </>
+  );
+}
+
+function LuCard({
+  it,
+  onSimples,
+  onCorrigir,
+}: {
+  it: LuItem;
+  onSimples: (a: 'lu_confiar' | 'lu_ignorar' | 'lu_exemplo', id: string) => Promise<void>;
+  onCorrigir: (id: string, resposta: string) => Promise<boolean>;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(it.resposta);
+  const [salvando, setSalvando] = useState(false);
+
+  const qa = it.scores?.qaScore != null ? Number(it.scores.qaScore) : null;
+  const tipoLabel = it.tipo === 'faq' ? 'FAQ curada' : it.tipo === 'geracao' ? 'Gerada' : it.tipo;
+
+  const salvar = async () => {
+    if (!texto.trim()) {
+      window.alert('Escreva a resposta corrigida.');
+      return;
+    }
+    setSalvando(true);
+    const ok = await onCorrigir(it.id, texto.trim());
+    setSalvando(false);
+    if (ok) setEditando(false);
+  };
+
+  const ignorar = () => {
+    if (!window.confirm('Arquivar esta resposta? Ela sai da fila e não muda nada no acervo.')) return;
+    void onSimples('lu_ignorar', it.id);
+  };
+
+  return (
+    <div className="pdqfb-rcard">
+      <div className="rhead">
+        <span className="tier">{tipoLabel}</span>
+        {it.thumbs === -1 ? <span className="tier" style={{ background: '#F8E2E4', color: '#881D28' }}>👎 aluna</span> : null}
+        {it.thumbs === 1 ? <span className="tier" style={{ background: '#E3F0E9', color: '#2F7A5A' }}>👍 aluna</span> : null}
+        {qa != null && Number.isFinite(qa) ? <span className="tier">match {Math.round(qa * 100)}%</span> : null}
+        <span className="rdata">{fmtData(it.created_at)}</span>
+      </div>
+      <div className="rperg">{it.pergunta}</div>
+      {editando ? (
+        <div className="promform">
+          <div className="hint">Sua correção vira a resposta oficial da Lu (na hora, sem retreino)</div>
+          <textarea
+            className="pi"
+            rows={7}
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            disabled={salvando}
+          />
+          <div className="racoes">
+            <button className="b pink" onClick={() => void salvar()} disabled={salvando}>
+              {salvando ? 'Salvando…' : 'Salvar correção'}
+            </button>
+            <button className="b" onClick={() => setEditando(false)} disabled={salvando}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="rresp">{it.resposta}</div>
+          <div className="racoes">
+            <button className="b ok" onClick={() => void onSimples('lu_confiar', it.id)}>
+              ✅ Confiar
+            </button>
+            <button className="b pink" onClick={() => { setTexto(it.resposta); setEditando(true); }}>
+              ✏️ Corrigir
+            </button>
+            <button className="b" onClick={ignorar}>
+              🗄️ Ignorar
+            </button>
+            <button
+              className="b"
+              onClick={() => {
+                if (window.confirm('Marcar como EXEMPLO? Guarda esta resposta para o treino futuro da Lu.')) {
+                  void onSimples('lu_exemplo', it.id);
+                }
+              }}
+            >
+              ⭐ Exemplo
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
