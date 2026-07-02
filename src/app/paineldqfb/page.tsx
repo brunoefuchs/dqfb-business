@@ -85,7 +85,15 @@ interface LuItem {
   thumbs: number | null; // -1 | 1 | null
   review_status: string;
   fontes: { fonte_tipo?: string; id?: string }[] | null;
-  scores: { qaScore?: number | string | null } | null;
+  scores: {
+    qaScore?: number | string | null;
+    curadoria_lu?: {
+      modo?: string;
+      em?: string;
+      resposta_nova?: string | null;
+      resposta_anterior?: string | null;
+    } | null;
+  } | null;
   created_at: string;
 }
 interface LuResp {
@@ -975,6 +983,8 @@ function LuCard({
 
   const qa = it.scores?.qaScore != null ? Number(it.scores.qaScore) : null;
   const tipoLabel = it.tipo === 'faq' ? 'FAQ curada' : it.tipo === 'geracao' ? 'Gerada' : it.tipo;
+  const trilha = it.scores?.curadoria_lu ?? null;
+  const respostaNova = trilha?.resposta_nova && trilha.resposta_nova !== it.resposta ? trilha.resposta_nova : null;
 
   const salvar = async () => {
     if (!texto.trim()) {
@@ -1004,7 +1014,10 @@ function LuCard({
             {it.review_status === 'revisada' ? '✅ confiada' : it.review_status === 'promovida_faq' ? '✏️ corrigida' : it.review_status === 'descartada' ? '🗄️ ignorada' : '⭐ exemplo'}
           </span>
         ) : null}
-        <span className="rdata">{fmtData(it.created_at)}</span>
+        <span className="rdata">
+          aluna {fmtData(it.created_at)}
+          {trilha?.em ? ' · curada ' + fmtData(trilha.em) : ''}
+        </span>
       </div>
       <div className="rperg">{it.pergunta}</div>
       {editando ? (
@@ -1028,7 +1041,20 @@ function LuCard({
         </div>
       ) : it.review_status !== 'pendente' ? (
         <>
-          <div className="rresp">{it.resposta}</div>
+          {respostaNova ? (
+            <>
+              <div className="hint" style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--pinky)', margin: '4px 0 6px' }}>
+                Resposta nova — vale a partir de agora
+              </div>
+              <div className="rresp" style={{ borderLeft: '3px solid var(--pinky)' }}>{respostaNova}</div>
+              <div className="hint" style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '10px 0 6px' }}>
+                O que a aluna recebeu na época
+              </div>
+              <div className="rresp" style={{ opacity: 0.7 }}>{it.resposta}</div>
+            </>
+          ) : (
+            <div className="rresp">{it.resposta}</div>
+          )}
           <div className="racoes">
             <button
               className="b"
