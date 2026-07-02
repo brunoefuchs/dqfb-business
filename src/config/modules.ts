@@ -2,6 +2,19 @@ import type { ModuleConfig } from '@/types/module';
 
 export const modules: ModuleConfig[] = [
   {
+    id: 'painel',
+    title: 'Painel',
+    subtitle: 'IA',
+    label: 'Módulo Command',
+    description:
+      'Central de IA: custo por modelo, revisão das respostas da Mel e curadoria do Avaliador de rótulos.',
+    icon: 'monitoring',
+    bgColor: 'bg-primary',
+    buttonText: 'Abrir Painel',
+    buttonTextColor: 'text-primary',
+    url: '/paineldqfb',
+  },
+  {
     id: 'transcricao',
     title: 'Transcrição',
     subtitle: 'DQFB',
