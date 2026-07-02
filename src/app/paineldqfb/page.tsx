@@ -85,6 +85,7 @@ interface LuItem {
   thumbs: number | null; // -1 | 1 | null
   review_status: string;
   fontes: { fonte_tipo?: string; id?: string }[] | null;
+  receita_titulo?: string | null;
   scores: {
     qaScore?: number | string | null;
     curadoria_lu?: {
@@ -1006,6 +1007,11 @@ function LuCard({
     <div className="pdqfb-rcard">
       <div className="rhead">
         <span className="tier">{tipoLabel}</span>
+        {it.receita_titulo ? (
+          <span className="tier" style={{ background: '#EAF2EE', color: '#2F5A46' }}>🍰 {it.receita_titulo}</span>
+        ) : (
+          <span className="tier" style={{ background: '#FBEEDC', color: '#8A5A18' }}>sem receita identificada</span>
+        )}
         {it.thumbs === -1 ? <span className="tier" style={{ background: '#F8E2E4', color: '#881D28' }}>👎 aluna</span> : null}
         {it.thumbs === 1 ? <span className="tier" style={{ background: '#E3F0E9', color: '#2F7A5A' }}>👍 aluna</span> : null}
         {qa != null && Number.isFinite(qa) ? <span className="tier">match {Math.round(qa * 100)}%</span> : null}
