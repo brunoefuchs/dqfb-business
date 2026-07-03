@@ -29,6 +29,11 @@ interface Custo {
   custo_medio_brl: number;
   algum_estimado: boolean;
   desde: string | null;
+  // (Story 12.B2) card "Custo IA do dia" — consumo de hoje (USD) vs teto/dia (USD).
+  // Opcionais: campos ADITIVOS do edge admin-painel; ausentes se o painel (Vercel)
+  // deployar ANTES do edge (rollout) → o card se esconde em vez de quebrar.
+  custo_hoje_usd?: number;
+  teto_usd_dia?: number;
   provedor: { provedor: string; brl: number; chamadas: number }[];
   feature: { feature: string; brl: number; chamadas: number }[];
   mes: { mes: string; brl: number; chamadas: number }[];
@@ -68,11 +73,20 @@ interface AvaliadorItem {
   usar_como_fewshot: boolean;
   ultima: string;
 }
+// (Story 12.B2) Uma linha do card "%Confiar por semana" (aba Avaliador).
+interface ConfiarSemana {
+  semana: string; // segunda-feira YYYY-MM-DD
+  n_curadas: number;
+  n_confiou: number;
+  n_corrigiu: number;
+  pct_confiar_sem_edicao: number | null;
+}
 interface AvaliadorResp {
   itens: AvaliadorItem[];
   total: number;
   marcadas: number;
   curados: number;
+  confiar_semana?: ConfiarSemana[]; // (Story 12.B2) aditivo — métrica global do Avaliador.
 }
 
 // Lu — Dúvidas Receitas (Story 10.10 do app-dqfb). Payload da ?fila=lu.
@@ -547,6 +561,12 @@ export default function PainelDqfb() {
 function CustoView({ d }: { d: Custo }) {
   const maxDia = Math.max(1, ...d.dia.map((x) => x.brl));
   const maxProv = Math.max(1, ...d.provedor.map((x) => x.brl));
+  // (Story 12.B2 / AC-1) Campos aditivos do edge — ausentes no rollout (painel antes do
+  // edge). Só mostra o card quando ambos vieram; senão esconde (sem quebrar o resto).
+  const temCustoDia = d.custo_hoje_usd != null && d.teto_usd_dia != null;
+  const custoHoje = d.custo_hoje_usd ?? 0;
+  const tetoDia = d.teto_usd_dia ?? 0;
+  const pctHoje = tetoDia > 0 ? Math.round((custoHoje / tetoDia) * 100) : 0;
   return (
     <>
       <div className="pdqfb-kpis">
@@ -570,6 +590,30 @@ function CustoView({ d }: { d: Custo }) {
           </div>
         </div>
       </div>
+
+      {/* (Story 12.B2 / AC-1) Card "Custo IA do dia": consumo de hoje (dia BR) vs teto. */}
+      {temCustoDia ? (
+        <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
+          <h2>Custo IA do dia</h2>
+          <div className="pdqfb-row">
+            <div className="name">
+              US$ {custoHoje.toFixed(2)} de US$ {tetoDia.toFixed(2)} consumidos hoje{' '}
+              <small>(dia BR)</small>
+            </div>
+            <div className="v">{pctHoje}%</div>
+          </div>
+          <div className="pdqfb-bar">
+            <span style={{ width: `${Math.min(100, pctHoje)}%` }} />
+          </div>
+          <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
+            Teto exibido = env AVALIADOR_KILL_SWITCH_USD_DIA (default 50). ⚠️ Para mudar o teto
+            hoje é preciso setar OS DOIS envs — AVALIADOR_KILL_SWITCH_USD_DIA (Avaliador) E
+            IA_KILL_SWITCH_GLOBAL_USD_DIA (o teto global que governa Mel/Tutor/Localizador desde
+            a 12.B3). Este card lê a cópia do admin-painel; pode divergir do teto real se um dos
+            envs ficar para trás.
+          </small>
+        </div>
+      ) : null}
 
       <div className="pdqfb-grid">
         <div className="pdqfb-panel">
@@ -1020,6 +1064,37 @@ function AvaliadorView(
           <div className="val">{d.total - d.curados}</div>
         </div>
       </div>
+      {/* (Story 12.B2 / AC-2) Card "%Confiar por semana" — de tudo que a Fran curou,
+          quanto ela CONFIOU no texto da IA sem editar. Métrica global (não muda por aba). */}
+      {d.confiar_semana && d.confiar_semana.length > 0 ? (
+        <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
+          <h2>%Confiar por semana</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Semana</th>
+                <th className="num">Curadas</th>
+                <th className="num">Confiou</th>
+                <th className="num">Corrigiu</th>
+                <th className="num">%Confiar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.confiar_semana.map((s) => (
+                <tr key={s.semana}>
+                  <td>{s.semana}</td>
+                  <td className="num">{s.n_curadas}</td>
+                  <td className="num">{s.n_confiou}</td>
+                  <td className="num">{s.n_corrigiu}</td>
+                  <td className="num">
+                    {s.pct_confiar_sem_edicao != null ? `${s.pct_confiar_sem_edicao}%` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       <div className="pdqfb-filahead">
         {d.itens.length} produto(s) · ⭐ = aluna reportou · ✅ confiar · ✏️ corrigir · 🗄️ ignorar · ⭐ exemplo (guarda p/ treino futuro da IA)
       </div>
