@@ -201,17 +201,20 @@ export default function PainelDqfb() {
     }
   }, [api]);
 
-  const loadAvaliador = useCallback(async () => {
+  // (Story 12.B1) aba de status da fila do Avaliador — mirror de `luStatus`/`loadLu`.
+  // Persiste no estado do componente pai: trocar de aba principal e voltar NÃO reseta.
+  const [avaliadorStatus, setAvaliadorStatus] = useState<'nao_curado' | 'curado'>('nao_curado');
+  const loadAvaliador = useCallback(async (st?: 'nao_curado' | 'curado') => {
     setErro('');
     setCarregando(true);
     try {
-      setAvaliador((await api('?fila=avaliador')) as AvaliadorResp);
+      setAvaliador((await api('?fila=avaliador&status=' + (st ?? avaliadorStatus))) as AvaliadorResp);
     } catch (e) {
       setErro(String(e));
     } finally {
       setCarregando(false);
     }
-  }, [api]);
+  }, [api, avaliadorStatus]);
 
   const [luStatus, setLuStatus] = useState<'pendente' | 'revisadas'>('pendente');
   const loadLu = useCallback(async (st?: 'pendente' | 'revisadas') => {
@@ -510,7 +513,15 @@ export default function PainelDqfb() {
           <RevisarView itens={fila} onAcao={acao} onPromover={promover} />
         ) : null}
         {!carregando && tab === 'avaliador' && avaliador ? (
-          <AvaliadorView d={avaliador} onAcao={acaoAvaliador} />
+          <AvaliadorView
+            d={avaliador}
+            status={avaliadorStatus}
+            onStatus={(st) => {
+              setAvaliadorStatus(st);
+              void loadAvaliador(st);
+            }}
+            onAcao={acaoAvaliador}
+          />
         ) : null}
         {!carregando && tab === 'lu' && lu ? (
           <LuView
@@ -960,12 +971,37 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
   );
 }
 
-function AvaliadorView({ d, onAcao }: { d: AvaliadorResp; onAcao: AcaoAvaliador }) {
+function AvaliadorView(
+  { d, status, onStatus, onAcao }: {
+    d: AvaliadorResp;
+    status: 'nao_curado' | 'curado';
+    onStatus: (st: 'nao_curado' | 'curado') => void;
+    onAcao: AcaoAvaliador;
+  },
+) {
+  // (Story 12.B1) Sub-filtro de abas — mesma classe/estrutura do `filtro` da LuView.
+  const filtro = (
+    <div className="pdqfb-tabs" style={{ margin: '0 0 14px', borderBottom: 'none' }}>
+      <button className={status === 'nao_curado' ? 'on' : ''} onClick={() => onStatus('nao_curado')}>
+        Não curado
+      </button>
+      <button className={status === 'curado' ? 'on' : ''} onClick={() => onStatus('curado')}>
+        Curado
+      </button>
+    </div>
+  );
+  // `total` é GLOBAL (AC-2): total 0 = nenhum produto avaliado no universo inteiro.
   if (d.total === 0) {
-    return <div className="pdqfb-loading">Nenhum produto avaliado ainda.</div>;
+    return (
+      <>
+        {filtro}
+        <div className="pdqfb-loading">Nenhum produto avaliado ainda.</div>
+      </>
+    );
   }
   return (
     <>
+      {filtro}
       <div className="pdqfb-kpis">
         <div className="pdqfb-kpi dark">
           <div className="lbl">Produtos avaliados</div>
@@ -985,11 +1021,17 @@ function AvaliadorView({ d, onAcao }: { d: AvaliadorResp; onAcao: AcaoAvaliador 
         </div>
       </div>
       <div className="pdqfb-filahead">
-        {d.total} produto(s) · ⭐ = aluna reportou · ✅ confiar · ✏️ corrigir · 🗄️ ignorar · ⭐ exemplo (guarda p/ treino futuro da IA)
+        {d.itens.length} produto(s) · ⭐ = aluna reportou · ✅ confiar · ✏️ corrigir · 🗄️ ignorar · ⭐ exemplo (guarda p/ treino futuro da IA)
       </div>
-      {d.itens.map((it) => (
-        <AvaliadorCard key={it.fatos_hash} it={it} onAcao={onAcao} />
-      ))}
+      {d.itens.length === 0 ? (
+        <div className="pdqfb-loading">
+          {status === 'curado'
+            ? 'Nenhum produto curado ainda.'
+            : 'Nenhum produto pendente — tudo curado por aqui. 💛'}
+        </div>
+      ) : (
+        d.itens.map((it) => <AvaliadorCard key={it.fatos_hash} it={it} onAcao={onAcao} />)
+      )}
     </>
   );
 }
