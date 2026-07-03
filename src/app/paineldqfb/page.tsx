@@ -102,6 +102,32 @@ interface LuResp {
   pendentes: number;
 }
 
+// Lu — Curadoria PROPONENTE (Story 16.2). Payload da ?fila=lu-proposta.
+interface LuPropostaItem {
+  id: string;
+  pergunta: string; // canônica (desidratada — sem a pessoa, com o referente)
+  proposta: string;
+  classe: 'nova' | 'enriquecimento';
+  fonte: 'abstencao' | 'conflito_runtime' | 'thumbs' | 'ima' | null;
+  ancora_id: string | null;
+  ancora_titulo: string | null;
+  alvo_id: string | null; // vizinha a enriquecer (quando classe='enriquecimento')
+  alvo_pergunta: string | null;
+  alvo_resposta_atual: string | null;
+  created_at: string;
+}
+interface LuPropostaResp {
+  itens: LuPropostaItem[];
+  pendentes: number;
+}
+interface MineracaoResp {
+  ok?: boolean;
+  lote?: number;
+  geradas?: number;
+  skips?: number;
+  descartes?: number;
+}
+
 function usePainelApi() {
   const getPass = useCallback(() => {
     let p = localStorage.getItem('dqfb_pass');
@@ -139,11 +165,13 @@ function usePainelApi() {
 
 export default function PainelDqfb() {
   const api = usePainelApi();
-  const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu'>('custo');
+  const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta'>('custo');
   const [custo, setCusto] = useState<Custo | null>(null);
   const [fila, setFila] = useState<FilaItem[] | null>(null);
   const [avaliador, setAvaliador] = useState<AvaliadorResp | null>(null);
   const [lu, setLu] = useState<LuResp | null>(null);
+  const [luProp, setLuProp] = useState<LuPropostaResp | null>(null);
+  const [minerando, setMinerando] = useState(false);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
 
@@ -197,15 +225,28 @@ export default function PainelDqfb() {
     }
   }, [api, luStatus]);
 
+  const loadLuProp = useCallback(async () => {
+    setErro('');
+    setCarregando(true);
+    try {
+      setLuProp((await api('?fila=lu-proposta')) as LuPropostaResp);
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setCarregando(false);
+    }
+  }, [api]);
+
   useEffect(() => {
     void loadCusto();
   }, [loadCusto]);
 
-  const trocarTab = (t: 'custo' | 'revisar' | 'avaliador' | 'lu') => {
+  const trocarTab = (t: 'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta') => {
     setTab(t);
     if (t === 'custo') void loadCusto();
     else if (t === 'revisar') void loadFila();
     else if (t === 'lu') void loadLu();
+    else if (t === 'lu-proposta') void loadLuProp();
     else void loadAvaliador();
   };
 
@@ -213,7 +254,53 @@ export default function PainelDqfb() {
     if (tab === 'custo') void loadCusto();
     else if (tab === 'revisar') void loadFila();
     else if (tab === 'lu') void loadLu();
+    else if (tab === 'lu-proposta') void loadLuProp();
     else void loadAvaliador();
+  };
+
+  // Lu — Curadoria proponente (Story 16.2): botão "Minerar" + 3 ações na fila.
+  const minerar = async () => {
+    setMinerando(true);
+    try {
+      const res = (await api('', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'lu_minerar' }),
+      })) as MineracaoResp;
+      window.alert(
+        `Mineração concluída.\n\nPropostas novas: ${res?.geradas ?? 0}\n` +
+          `Sem material suficiente (puladas): ${res?.skips ?? 0}\n` +
+          `Barradas nos guards: ${res?.descartes ?? 0}`,
+      );
+      await loadLuProp();
+    } catch (e) {
+      window.alert(String(e));
+    } finally {
+      setMinerando(false);
+    }
+  };
+
+  const acaoProposta = async (
+    action: 'lu_prop_confiar' | 'lu_prop_corrigir' | 'lu_prop_ignorar',
+    id: string,
+    resposta?: string,
+  ): Promise<boolean> => {
+    try {
+      const res = (await api('', {
+        method: 'POST',
+        body: JSON.stringify({ action, id, ...(resposta ? { resposta } : {}) }),
+      })) as { ok?: boolean; error?: string };
+      if (res?.error) {
+        window.alert(res.error);
+        return false;
+      }
+      setLuProp((d) =>
+        d ? { ...d, itens: d.itens.filter((x) => x.id !== id), pendentes: d.pendentes - 1 } : d,
+      );
+      return true;
+    } catch (e) {
+      window.alert(String(e));
+      return false;
+    }
   };
 
   const removerDaFila = (id: string) => setFila((f) => (f ? f.filter((x) => x.id !== id) : f));
@@ -406,6 +493,9 @@ export default function PainelDqfb() {
           <button className={tab === 'lu' ? 'on' : ''} onClick={() => trocarTab('lu')}>
             Lu · Dúvidas Receitas
           </button>
+          <button className={tab === 'lu-proposta' ? 'on' : ''} onClick={() => trocarTab('lu-proposta')}>
+            Lu · Propostas
+          </button>
         </div>
 
         {erro ? <div className="pdqfb-err">{erro}</div> : null}
@@ -430,6 +520,9 @@ export default function PainelDqfb() {
             onCorrigir={corrigirLu}
             onReabrir={reabrirLu}
           />
+        ) : null}
+        {!carregando && tab === 'lu-proposta' && luProp ? (
+          <LuPropostaView d={luProp} minerando={minerando} onMinerar={minerar} onAcao={acaoProposta} />
         ) : null}
       </div>
     </>
@@ -1104,6 +1197,171 @@ function LuCard({
   );
 }
 
+// ─── Lu — Curadoria PROPONENTE (Story 16.2) ────────────────────────────────────
+// A Lu minera os próprios pontos-cegos e traz PROPOSTAS já redigidas (âncora + números
+// conferidos + guards). A Fran decide em 1 clique: Confiar / Corrigir / Ignorar — nunca
+// redige do zero. Mesma UX/visual da aba "Lu · Dúvidas Receitas".
+function LuPropostaView({
+  d,
+  minerando,
+  onMinerar,
+  onAcao,
+}: {
+  d: LuPropostaResp;
+  minerando: boolean;
+  onMinerar: () => void;
+  onAcao: (
+    a: 'lu_prop_confiar' | 'lu_prop_corrigir' | 'lu_prop_ignorar',
+    id: string,
+    resposta?: string,
+  ) => Promise<boolean>;
+}) {
+  const botao = (
+    <div className="pdqfb-tabs" style={{ margin: '0 0 14px', borderBottom: 'none' }}>
+      <button className="pdqfb-minerar" onClick={onMinerar} disabled={minerando}>
+        {minerando ? '⛏️ Minerando…' : '🔍 Minerar pontos-cegos'}
+      </button>
+    </div>
+  );
+  const novas = d.itens.filter((x) => x.classe === 'nova').length;
+  const enriq = d.itens.filter((x) => x.classe === 'enriquecimento').length;
+  return (
+    <>
+      {botao}
+      <div className="pdqfb-kpis">
+        <div className="pdqfb-kpi dark">
+          <div className="lbl">Propostas na fila</div>
+          <div className="val">{d.pendentes}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Perguntas novas</div>
+          <div className="val">{novas}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Enriquecer resposta curta</div>
+          <div className="val">{enriq}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Ações</div>
+          <div className="val" style={{ fontSize: 15 }}>✅ ✏️ 🗄️</div>
+        </div>
+      </div>
+      {d.itens.length === 0 ? (
+        <div className="pdqfb-loading">
+          Nenhuma proposta na fila. Clique em “Minerar pontos-cegos” para a Lu buscar lacunas e trazer rascunhos. 💛
+        </div>
+      ) : (
+        <>
+          <div className="pdqfb-filahead">
+            {d.pendentes} proposta(s) · ✅ confiar (publica) · ✏️ corrigir (seu texto) · 🗄️ ignorar
+          </div>
+          {d.itens.map((it) => (
+            <LuPropostaCard key={it.id} it={it} onAcao={onAcao} />
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
+const FONTE_PROP_LABEL: Record<string, string> = {
+  abstencao: 'ficou sem resposta',
+  conflito_runtime: 'respostas em conflito',
+  thumbs: '👎 da aluna',
+  ima: 'resposta curta demais',
+};
+
+function LuPropostaCard({
+  it,
+  onAcao,
+}: {
+  it: LuPropostaItem;
+  onAcao: (
+    a: 'lu_prop_confiar' | 'lu_prop_corrigir' | 'lu_prop_ignorar',
+    id: string,
+    resposta?: string,
+  ) => Promise<boolean>;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(it.proposta);
+  const [salvando, setSalvando] = useState(false);
+  const enriquecimento = it.classe === 'enriquecimento';
+
+  const confiar = async () => {
+    setSalvando(true);
+    await onAcao('lu_prop_confiar', it.id);
+    setSalvando(false);
+  };
+  const salvar = async () => {
+    if (!texto.trim()) {
+      window.alert('Escreva a resposta.');
+      return;
+    }
+    setSalvando(true);
+    const ok = await onAcao('lu_prop_corrigir', it.id, texto.trim());
+    setSalvando(false);
+    if (ok) setEditando(false);
+  };
+  const ignorar = () => {
+    if (!window.confirm('Descartar esta proposta? Ela sai da fila e nada é publicado.')) return;
+    void onAcao('lu_prop_ignorar', it.id);
+  };
+
+  return (
+    <div className="pdqfb-rcard">
+      <div className="rhead">
+        <span className="tier" style={enriquecimento
+          ? { background: '#EEE9F5', color: '#5B4B7A' }
+          : { background: '#E3F0E9', color: '#2F7A5A' }}>
+          {enriquecimento ? '➕ enriquecer resposta' : '🆕 pergunta nova'}
+        </span>
+        {it.ancora_titulo ? (
+          <span className="tier" style={{ background: '#EAF2EE', color: '#2F5A46' }}>🍰 {it.ancora_titulo}</span>
+        ) : (
+          <span className="tier" style={{ background: '#FBEEDC', color: '#8A5A18' }}>sem receita amarrada</span>
+        )}
+        {it.fonte ? <span className="tier">{FONTE_PROP_LABEL[it.fonte] ?? it.fonte}</span> : null}
+        <span className="rdata">minerada {fmtData(it.created_at)}</span>
+      </div>
+      <div className="rperg">{it.pergunta}</div>
+
+      {enriquecimento && it.alvo_resposta_atual ? (
+        <>
+          <div className="hint" style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '4px 0 6px' }}>
+            Resposta curta de hoje
+          </div>
+          <div className="rresp" style={{ opacity: 0.7 }}>{it.alvo_resposta_atual}</div>
+          <div className="hint" style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--pinky)', margin: '10px 0 6px' }}>
+            Proposta da Lu — auto-contida
+          </div>
+        </>
+      ) : null}
+
+      {editando ? (
+        <div className="promform">
+          <div className="hint">Seu texto entra no lugar da proposta — publica ao salvar</div>
+          <textarea className="pi" rows={6} value={texto} onChange={(e) => setTexto(e.target.value)} disabled={salvando} />
+          <div className="racoes">
+            <button className="b pink" onClick={() => void salvar()} disabled={salvando}>
+              {salvando ? 'Salvando…' : 'Salvar e publicar'}
+            </button>
+            <button className="b" onClick={() => setEditando(false)} disabled={salvando}>Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="rresp" style={{ borderLeft: '3px solid var(--pinky)' }}>{it.proposta}</div>
+          <div className="racoes">
+            <button className="b ok" onClick={() => void confiar()} disabled={salvando}>✅ Confiar</button>
+            <button className="b pink" onClick={() => { setTexto(it.proposta); setEditando(true); }} disabled={salvando}>✏️ Corrigir</button>
+            <button className="b" onClick={ignorar} disabled={salvando}>🗄️ Ignorar</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const CSS = `
 .pdqfb-wrap{--pinky:#CE3B87;--velvet:#881D28;--cream-200:#F5E6E8;--off:#F8F4F3;--paper:#FFFFFF;--ink:#1A1416;--ink-2:#4E3F44;--ink-3:#8E7E83;--ink-4:#C9BDC0;--hairline:rgba(26,20,22,0.08);--success:#2F7A5A;--pink-300:#E07AAE;
   max-width:1100px;margin:0 auto;padding:28px 24px 64px;color:var(--ink);background:var(--off);min-height:100vh;font-family:var(--font-manrope),-apple-system,Helvetica,Arial,sans-serif;}
@@ -1118,6 +1376,8 @@ const CSS = `
 .pdqfb-tabs{display:flex;gap:8px;margin:18px 0 22px;border-bottom:1px solid var(--hairline);}
 .pdqfb-tabs button{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink-3);background:none;border:none;border-bottom:2px solid transparent;padding:10px 6px;cursor:pointer;}
 .pdqfb-tabs button.on{color:var(--pinky);border-bottom-color:var(--pinky);}
+.pdqfb-minerar{font-family:inherit;font-size:13px;font-weight:600;letter-spacing:0.01em;text-transform:none;background:var(--pinky);color:#fff;border:1px solid var(--pinky);border-bottom:1px solid var(--pinky);border-radius:999px;padding:9px 18px;cursor:pointer;}
+.pdqfb-minerar:disabled{opacity:0.55;cursor:not-allowed;}
 .pdqfb-err{color:var(--velvet);font-size:13px;margin:8px 0;}
 .pdqfb-loading{color:var(--ink-3);font-family:ui-monospace,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;padding:20px 0;}
 .pdqfb-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:4px 0 22px;}
