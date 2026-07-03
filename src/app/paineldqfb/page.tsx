@@ -124,6 +124,7 @@ interface MineracaoResp {
   ok?: boolean;
   lote?: number;
   geradas?: number;
+  motivos?: Record<string, number>;
   skips?: number;
   descartes?: number;
 }
@@ -268,6 +269,9 @@ export default function PainelDqfb() {
       })) as MineracaoResp;
       window.alert(
         `Mineração concluída.\n\nPropostas novas: ${res?.geradas ?? 0}\n` +
+        (res?.motivos && Object.keys(res.motivos).length
+          ? Object.entries(res.motivos).map(([m, n]) => `  · ${m}: ${n}`).join('\n') + '\n'
+          : '') +
           `Sem material suficiente (puladas): ${res?.skips ?? 0}\n` +
           `Barradas nos guards: ${res?.descartes ?? 0}`,
       );
