@@ -102,6 +102,10 @@ interface LuItem {
   receita_titulo?: string | null;
   scores: {
     qaScore?: number | string | null;
+    // Score de CONFIANÇA da resposta (pedido do dono 2026-07-12) — determinístico por rota de
+    // decisão, gravado pela edge `tutor` (curadoria pura 90-95 · adaptação 80 · composição 70-75).
+    confianca_resposta?: number | string | null;
+    confianca_rota?: string | null;
     curadoria_lu?: {
       modo?: string;
       em?: string;
@@ -1197,6 +1201,9 @@ function LuCard({
   const [salvando, setSalvando] = useState(false);
 
   const qa = it.scores?.qaScore != null ? Number(it.scores.qaScore) : null;
+  // Confiança da resposta (rota de decisão da Lu) — tooltip mostra a rota por extenso.
+  const confPct = it.scores?.confianca_resposta != null ? Number(it.scores.confianca_resposta) : null;
+  const confRota = it.scores?.confianca_rota ?? null;
   const tipoLabel = it.tipo === 'faq' ? 'FAQ curada' : it.tipo === 'geracao' ? 'Gerada' : it.tipo;
   const trilha = it.scores?.curadoria_lu ?? null;
   const respostaNova = trilha?.resposta_nova && trilha.resposta_nova !== it.resposta ? trilha.resposta_nova : null;
@@ -1229,6 +1236,18 @@ function LuCard({
         {it.thumbs === -1 ? <span className="tier" style={{ background: '#F8E2E4', color: '#881D28' }}>👎 aluna</span> : null}
         {it.thumbs === 1 ? <span className="tier" style={{ background: '#E3F0E9', color: '#2F7A5A' }}>👍 aluna</span> : null}
         {qa != null && Number.isFinite(qa) ? <span className="tier">match {Math.round(qa * 100)}%</span> : null}
+        {confPct != null && Number.isFinite(confPct) ? (
+          <span
+            className="tier"
+            title={confRota ?? undefined}
+            style={{
+              background: confPct >= 90 ? '#E3F0E9' : confPct >= 75 ? '#FBF3DC' : '#F8E2E4',
+              color: confPct >= 90 ? '#2F7A5A' : confPct >= 75 ? '#8A5A18' : '#881D28',
+            }}
+          >
+            confiança {Math.round(confPct)}%
+          </span>
+        ) : null}
         {it.review_status !== 'pendente' ? (
           <span className="tier" style={{ background: '#EEE9F5', color: '#5B4B7A' }}>
             {it.review_status === 'revisada' ? '✅ confiada' : it.review_status === 'promovida_faq' ? '✏️ corrigida' : it.review_status === 'descartada' ? '🗄️ ignorada' : '⭐ exemplo'}
