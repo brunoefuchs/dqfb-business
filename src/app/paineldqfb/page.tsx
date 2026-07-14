@@ -112,6 +112,11 @@ interface LuItem {
       resposta_nova?: string | null;
       resposta_anterior?: string | null;
     } | null;
+    // (dono 2026-07-14) Bastidores de uma abstenção: o que a Lu TENTOU dizer (gen) + por que o
+    // guard barrou (guardOut). A aluna recebe só a abstenção; aqui a Fran vê o que foi cortado.
+    onde?: string | null; // etapa onde parou (ex.: 'guard_2x')
+    gen?: string[] | null; // tentativas de geração reprovadas
+    guardOut?: string[] | null; // saída do guard por tentativa (JSON com "motivo")
   } | null;
   created_at: string;
 }
@@ -1207,6 +1212,11 @@ function LuCard({
   const tipoLabel = it.tipo === 'faq' ? 'FAQ curada' : it.tipo === 'geracao' ? 'Gerada' : it.tipo;
   const trilha = it.scores?.curadoria_lu ?? null;
   const respostaNova = trilha?.resposta_nova && trilha.resposta_nova !== it.resposta ? trilha.resposta_nova : null;
+  // (dono 2026-07-14) Bastidores da abstenção: o que a Lu tentou dizer + por que o guard barrou.
+  const genTent = Array.isArray(it.scores?.gen) ? (it.scores!.gen as string[]) : null;
+  const guardOut = Array.isArray(it.scores?.guardOut) ? (it.scores!.guardOut as string[]) : null;
+  const ondeParou = typeof it.scores?.onde === 'string' ? it.scores!.onde : null;
+  const nTent = Math.max(genTent?.length ?? 0, guardOut?.length ?? 0);
 
   const salvar = async () => {
     if (!texto.trim()) {
@@ -1333,8 +1343,32 @@ function LuCard({
           </div>
         </>
       )}
+      {nTent > 0 ? (
+        <details className="lu-bastidores">
+          <summary>
+            🛡️ O que a Lu tentou dizer — barrado pelo guard
+            {ondeParou ? <span className="lu-onde">{ondeParou}</span> : null}
+          </summary>
+          {Array.from({ length: nTent }).map((_, i) => (
+            <div className="lu-tent" key={i}>
+              <div className="lu-tent-cab">Tentativa {i + 1}</div>
+              {genTent?.[i] ? <div className="lu-tent-gen">{genTent[i]}</div> : null}
+              {guardOut?.[i] ? <div className="lu-tent-motivo">Guard reprovou: {motivoGuard(guardOut[i])}</div> : null}
+            </div>
+          ))}
+          <div className="lu-bast-nota">A aluna recebeu só a abstenção — nada disto vazou para ela.</div>
+        </details>
+      ) : null}
     </div>
   );
+}
+
+/** Extrai o "motivo" do JSON de saída do guard (pode vir embrulhado em ```json … ``` ou truncado). */
+function motivoGuard(raw: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  const m = raw.match(/"motivo"\s*:\s*"([^"]{0,400})/);
+  if (m) return m[1];
+  return raw.replace(/```json|```/g, '').replace(/\s+/g, ' ').trim().slice(0, 280);
 }
 
 // ─── Lu — Curadoria PROPONENTE (Story 16.2) ────────────────────────────────────
@@ -1570,6 +1604,15 @@ const CSS = `
 .pdqfb-rcard .lentes{display:flex;gap:8px;}
 .pdqfb-rcard .lb{font-family:inherit;font-size:12px;border:1px solid var(--hairline);background:var(--paper);color:var(--ink-2);border-radius:999px;padding:6px 14px;cursor:pointer;}
 .pdqfb-rcard .lb.on{background:var(--pinky);border-color:var(--pinky);color:#fff;}
+.pdqfb-rcard .lu-bastidores{margin-top:12px;border-top:1px dashed var(--hairline);padding-top:10px;}
+.pdqfb-rcard .lu-bastidores>summary{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);cursor:pointer;display:flex;align-items:center;gap:8px;list-style:none;}
+.pdqfb-rcard .lu-bastidores>summary::-webkit-details-marker{display:none;}
+.pdqfb-rcard .lu-bastidores .lu-onde{font-family:ui-monospace,monospace;font-size:9px;background:#F8E2E4;color:#881D28;padding:2px 7px;border-radius:999px;letter-spacing:0.06em;}
+.pdqfb-rcard .lu-tent{margin-top:10px;background:var(--off);border-radius:10px;padding:10px 12px;border-left:3px solid #D9A3A9;}
+.pdqfb-rcard .lu-tent-cab{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px;}
+.pdqfb-rcard .lu-tent-gen{font-size:13px;line-height:1.5;color:var(--ink-2);white-space:pre-wrap;max-height:160px;overflow:auto;}
+.pdqfb-rcard .lu-tent-motivo{margin-top:8px;font-size:12px;line-height:1.45;color:#8A2A32;background:#FBEEF0;border-radius:8px;padding:7px 10px;}
+.pdqfb-rcard .lu-bast-nota{margin-top:10px;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.06em;color:var(--ink-3);font-style:italic;}
 .pdqfb-acard{background:var(--paper);border:1px solid var(--hairline);border-radius:14px;padding:14px 16px;margin-bottom:10px;}
 .pdqfb-acard .ahead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .pdqfb-acard .star{font-size:14px;line-height:1;}
