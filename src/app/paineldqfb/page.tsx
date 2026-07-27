@@ -153,14 +153,9 @@ interface MineracaoResp {
 }
 
 function usePainelApi() {
-  const getPass = useCallback(() => {
-    let p = localStorage.getItem('dqfb_pass');
-    if (!p) {
-      p = window.prompt(`Senha do painel (usuário ${USER}):`) || '';
-      if (p) localStorage.setItem('dqfb_pass', p);
-    }
-    return p;
-  }, []);
+  // A senha é coletada pela tela de login (LoginGate) e guardada em localStorage
+  // ANTES de o painel montar — aqui só lemos. Sem window.prompt.
+  const getPass = useCallback(() => localStorage.getItem('dqfb_pass') || '', []);
 
   const api = useCallback(
     async (path: string, opts?: RequestInit) => {
@@ -187,7 +182,7 @@ function usePainelApi() {
   return api;
 }
 
-export default function PainelDqfb() {
+function PainelDqfb({ onSair }: { onSair: () => void }) {
   const api = usePainelApi();
   const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta'>('custo');
   const [custo, setCusto] = useState<Custo | null>(null);
@@ -503,6 +498,7 @@ export default function PainelDqfb() {
               >
                 Trocar senha
               </button>
+              <button onClick={onSair}>Sair</button>
             </div>
           </div>
           <div className="pdqfb-note">
@@ -1643,4 +1639,108 @@ const CSS = `
 .pdqfb-acard .aedit select,.pdqfb-acard .aedit textarea{font-family:inherit;font-size:14px;color:var(--ink);background:var(--paper);border:1px solid var(--hairline);border-radius:10px;padding:9px 12px;width:100%;}
 .pdqfb-acard .aedit textarea{resize:vertical;line-height:1.5;}
 .pdqfb-acard .aedit .ebtns{display:flex;gap:8px;margin-top:4px;}
+
+/* ── Tela de login ─────────────────────────────────────────────── */
+.pdqfb-login{position:fixed;inset:0;background:var(--off);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50;}
+.pdqfb-login-card{width:100%;max-width:380px;background:var(--paper);border:1px solid var(--hairline);border-radius:20px;padding:36px 32px;box-shadow:0 12px 40px rgba(26,20,22,0.08);}
+.pdqfb-login-eyebrow{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-3);}
+.pdqfb-login-h1{font-family:var(--font-display);font-size:38px;font-weight:600;line-height:1.05;color:var(--ink);margin:6px 0 4px;}
+.pdqfb-login-h1 span{color:var(--pinky);}
+.pdqfb-login-sub{font-size:13px;color:var(--ink-3);margin-bottom:24px;}
+.pdqfb-login label{display:block;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 6px;}
+.pdqfb-login input{width:100%;font-family:inherit;font-size:15px;color:var(--ink);background:var(--paper);border:1px solid var(--hairline);border-radius:11px;padding:11px 13px;transition:border-color 0.15s;}
+.pdqfb-login input:focus{outline:none;border-color:var(--pinky);}
+.pdqfb-login input:disabled{opacity:0.5;}
+.pdqfb-login button{width:100%;margin-top:22px;font-family:inherit;font-size:15px;font-weight:600;color:#fff;background:var(--pinky);border:none;border-radius:11px;padding:13px;cursor:pointer;transition:opacity 0.15s;}
+.pdqfb-login button:hover{opacity:0.92;}
+.pdqfb-login button:disabled{opacity:0.5;cursor:not-allowed;}
+.pdqfb-login-err{margin-top:14px;font-size:13px;color:var(--velvet);}
 `;
+
+/** Tela de login — coleta a senha (usuário fixo `dqfb`), valida na API e a
+ *  guarda em localStorage antes de o painel montar. Substitui o window.prompt. */
+function LoginGate({ onOk }: { onOk: () => void }) {
+  const [senha, setSenha] = useState('');
+  const [erro, setErro] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  const entrar = useCallback(async () => {
+    if (!senha || enviando) return;
+    setEnviando(true);
+    setErro('');
+    try {
+      const r = await fetch(BASE + '?data=1', {
+        headers: { authorization: 'Basic ' + btoa(`${USER}:${senha}`) },
+      });
+      if (r.status === 401) {
+        setErro('Senha incorreta.');
+        setEnviando(false);
+        return;
+      }
+      if (!r.ok) {
+        setErro('Erro ao entrar. Tente de novo.');
+        setEnviando(false);
+        return;
+      }
+      localStorage.setItem('dqfb_pass', senha);
+      onOk();
+    } catch {
+      setErro('Sem conexão. Tente de novo.');
+      setEnviando(false);
+    }
+  }, [senha, enviando, onOk]);
+
+  return (
+    <>
+      <meta name="robots" content="noindex" />
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <div className="pdqfb-login">
+        <form
+          className="pdqfb-login-card"
+          onSubmit={(e) => {
+            e.preventDefault();
+            entrar();
+          }}
+        >
+          <div className="pdqfb-login-eyebrow">DQFB · Admin</div>
+          <h1 className="pdqfb-login-h1">
+            Painel <span>DQFB</span>
+          </h1>
+          <div className="pdqfb-login-sub">Acesso restrito.</div>
+          <label htmlFor="pdqfb-user">Usuário</label>
+          <input id="pdqfb-user" value={USER} readOnly disabled />
+          <label htmlFor="pdqfb-pass">Senha</label>
+          <input
+            id="pdqfb-pass"
+            type="password"
+            autoFocus
+            value={senha}
+            disabled={enviando}
+            onChange={(e) => setSenha(e.target.value)}
+          />
+          {erro ? <div className="pdqfb-login-err">{erro}</div> : null}
+          <button type="submit" disabled={enviando || !senha}>
+            {enviando ? 'Entrando…' : 'Entrar'}
+          </button>
+        </form>
+      </div>
+    </>
+  );
+}
+
+export default function Page() {
+  const [logado, setLogado] = useState<boolean | null>(null);
+  useEffect(() => {
+    setLogado(!!localStorage.getItem('dqfb_pass'));
+  }, []);
+  if (logado === null) return null; // evita flash no SSR/hydration
+  if (!logado) return <LoginGate onOk={() => setLogado(true)} />;
+  return (
+    <PainelDqfb
+      onSair={() => {
+        localStorage.removeItem('dqfb_pass');
+        setLogado(false);
+      }}
+    />
+  );
+}
