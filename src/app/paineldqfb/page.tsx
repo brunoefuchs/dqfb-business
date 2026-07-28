@@ -53,6 +53,7 @@ interface FilaItem {
   tier_usado: string;
   fontes_citadas: Fonte[] | null;
   feedback: string | null;
+  review_status?: string; // presente na aba "Já revisadas" (revisada/descartada/promovida_acervo)
   created_at: string;
 }
 interface AvaliadorItem {
@@ -189,6 +190,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta'>('custo');
   const [custo, setCusto] = useState<Custo | null>(null);
   const [fila, setFila] = useState<FilaItem[] | null>(null);
+  const [melStatus, setMelStatus] = useState<'pendente' | 'revisadas'>('pendente');
   const [avaliador, setAvaliador] = useState<AvaliadorResp | null>(null);
   const [lu, setLu] = useState<LuResp | null>(null);
   const [luProp, setLuProp] = useState<LuPropostaResp | null>(null);
@@ -208,18 +210,18 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
     }
   }, [api]);
 
-  const loadFila = useCallback(async () => {
+  const loadFila = useCallback(async (st?: 'pendente' | 'revisadas') => {
     setErro('');
     setCarregando(true);
     try {
-      const d = (await api('?fila=mel')) as { itens: FilaItem[] };
+      const d = (await api('?fila=mel&status=' + (st ?? melStatus))) as { itens: FilaItem[] };
       setFila(d.itens ?? []);
     } catch (e) {
       setErro(String(e));
     } finally {
       setCarregando(false);
     }
-  }, [api]);
+  }, [api, melStatus]);
 
   // (Story 12.B1) aba de status da fila do Avaliador — mirror de `luStatus`/`loadLu`.
   // Persiste no estado do componente pai: trocar de aba principal e voltar NÃO reseta.
@@ -531,7 +533,16 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
 
         {!carregando && tab === 'custo' && custo ? <CustoView d={custo} /> : null}
         {!carregando && tab === 'revisar' && fila ? (
-          <RevisarView itens={fila} onAcao={acao} onPromover={promover} />
+          <RevisarView
+            itens={fila}
+            status={melStatus}
+            onStatus={(st) => {
+              setMelStatus(st);
+              void loadFila(st);
+            }}
+            onAcao={acao}
+            onPromover={promover}
+          />
         ) : null}
         {!carregando && tab === 'avaliador' && avaliador ? (
           <AvaliadorView
@@ -730,30 +741,65 @@ function CustoView({ d }: { d: Custo }) {
 
 function RevisarView({
   itens,
+  status,
+  onStatus,
   onAcao,
   onPromover,
 }: {
   itens: FilaItem[];
+  status: 'pendente' | 'revisadas';
+  onStatus: (st: 'pendente' | 'revisadas') => void;
   onAcao: (id: string, a: 'revisar' | 'descartar') => void;
   onPromover: (id: string, p: { titulo: string; resumo: string; lente: string | null; doi: string }) => void;
 }) {
-  if (itens.length === 0) return <div className="pdqfb-loading">Nenhuma resposta pendente. 🎉</div>;
+  const revisadas = status === 'revisadas';
+  const filtro = (
+    <div className="pdqfb-tabs" style={{ margin: '0 0 14px', borderBottom: 'none' }}>
+      <button className={status === 'pendente' ? 'on' : ''} onClick={() => onStatus('pendente')}>
+        Pendentes
+      </button>
+      <button className={status === 'revisadas' ? 'on' : ''} onClick={() => onStatus('revisadas')}>
+        Já revisadas
+      </button>
+    </div>
+  );
+  if (itens.length === 0) {
+    return (
+      <>
+        {filtro}
+        <div className="pdqfb-loading">
+          {revisadas ? 'Nada revisado ainda.' : 'Nenhuma resposta pendente. 🎉'}
+        </div>
+      </>
+    );
+  }
   return (
     <>
-      <div className="pdqfb-filahead">{itens.length} resposta(s) pendente(s)</div>
+      {filtro}
+      <div className="pdqfb-filahead">
+        {itens.length} resposta(s) {revisadas ? 'já revisada(s)' : 'pendente(s)'}
+      </div>
       {itens.map((it) => (
-        <ReviewCard key={it.id} it={it} onAcao={onAcao} onPromover={onPromover} />
+        <ReviewCard key={it.id} it={it} readOnly={revisadas} onAcao={onAcao} onPromover={onPromover} />
       ))}
     </>
   );
 }
 
+const MEL_STATUS_LABEL: Record<string, string> = {
+  revisada: '✓ Revisada',
+  descartada: '🗑 Descartada',
+  promovida_acervo: '⭐ No acervo',
+};
+
 function ReviewCard({
   it,
+  readOnly = false,
   onAcao,
   onPromover,
 }: {
   it: FilaItem;
+  readOnly?: boolean;
   onAcao: (id: string, a: 'revisar' | 'descartar') => void;
   onPromover: (id: string, p: { titulo: string; resumo: string; lente: string | null; doi: string }) => void;
 }) {
@@ -770,6 +816,11 @@ function ReviewCard({
       <div className="rhead">
         <span className="tier">{it.tier_usado}</span>
         {fb ? <span>{fb}</span> : null}
+        {readOnly && it.review_status ? (
+          <span className="tier" style={{ background: '#EEE9F5', color: '#5B4B7A' }}>
+            {MEL_STATUS_LABEL[it.review_status] ?? it.review_status}
+          </span>
+        ) : null}
         <span className="rdata">{(it.created_at || '').slice(0, 10)}</span>
       </div>
       <div className="rperg">{it.pergunta}</div>
@@ -783,18 +834,20 @@ function ReviewCard({
           ))}
         </div>
       ) : null}
-      <div className="racoes">
-        <button className="b ok" onClick={() => onAcao(it.id, 'revisar')}>
-          Revisada
-        </button>
-        <button className="b" onClick={() => onAcao(it.id, 'descartar')}>
-          Descartar
-        </button>
-        <button className="b pink" onClick={() => setAberto((v) => !v)}>
-          Ao acervo
-        </button>
-      </div>
-      {aberto ? (
+      {readOnly ? null : (
+        <div className="racoes">
+          <button className="b ok" onClick={() => onAcao(it.id, 'revisar')}>
+            Revisada
+          </button>
+          <button className="b" onClick={() => onAcao(it.id, 'descartar')}>
+            Descartar
+          </button>
+          <button className="b pink" onClick={() => setAberto((v) => !v)}>
+            Ao acervo
+          </button>
+        </div>
+      )}
+      {!readOnly && aberto ? (
         <div className="promform">
           <div className="hint">
             Escreva a versão CERTA — vira fonte das próximas respostas (não copie a conversa)
