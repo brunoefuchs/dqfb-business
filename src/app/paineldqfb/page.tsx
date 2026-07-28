@@ -633,21 +633,32 @@ function SaldoProvedores(
         return (
           <div
             key={prov}
-            style={{ marginTop: i === 0 ? 0 : 14, paddingTop: i === 0 ? 0 : 14, borderTop: i === 0 ? 'none' : '1px solid rgba(128,128,128,0.25)' }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+              marginTop: i === 0 ? 0 : 12,
+              paddingTop: i === 0 ? 0 : 12,
+              borderTop: i === 0 ? 'none' : '1px solid rgba(128,128,128,0.25)',
+            }}
           >
-            <div className="pdqfb-row">
-              <div className="name"><strong>{prov}</strong></div>
-              <div className="v">
-                {s ? `${fmt(s.saldo_estimado_brl)} · US$ ${s.saldo_estimado_usd.toFixed(2)}` : '— não configurado'}
-              </div>
-            </div>
+            <strong style={{ minWidth: 74 }}>{prov}</strong>
+            <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {s ? `${fmt(s.saldo_estimado_brl)} · US$ ${s.saldo_estimado_usd.toFixed(2)}` : '— não configurado'}
+            </span>
             {s ? (
-              <small style={{ display: 'block', color: 'var(--ink-3)' }}>
-                gasto desde a âncora: US$ {s.gasto_desde_usd.toFixed(4)} · âncora em{' '}
-                {new Date(s.ancora_em).toLocaleString('pt-BR')}
+              <small style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
+                gasto US$ {s.gasto_desde_usd.toFixed(2)} · âncora{' '}
+                {new Date(s.ancora_em).toLocaleString('pt-BR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
               </small>
             ) : null}
-            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
               <span style={{ color: 'var(--ink-3)' }}>US$</span>
               <input
                 type="number"
@@ -656,7 +667,7 @@ function SaldoProvedores(
                 placeholder="saldo no console"
                 value={draft[prov] ?? ''}
                 onChange={(e) => setDraft((dd) => ({ ...dd, [prov]: e.target.value }))}
-                style={{ width: 150, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,0.35)', background: 'transparent', color: 'inherit' }}
+                style={{ width: 130, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,0.35)', background: 'transparent', color: 'inherit' }}
               />
               <button className="b" onClick={() => submit(prov)} disabled={saving === prov}>
                 {saving === prov ? 'Salvando…' : 'Atualizar'}
