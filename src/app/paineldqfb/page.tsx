@@ -608,6 +608,11 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
 // (saldo por provedor) Card "Saldo dos provedores": o dono digita o saldo que o console
 // mostra e o painel desconta o gasto rastreado desde então. Estimativa — reancorar recalibra.
 const SALDO_PROVEDORES = ['Anthropic', 'OpenAI'];
+// Rótulo amigável das features no card "Por feature" (o valor cru fica no banco).
+// tutor = motor da Lu (Dúvidas Receitas / Cozinha DQFB).
+const FEATURE_LABEL: Record<string, string> = {
+  tutor: 'Lu · tutor',
+};
 function SaldoProvedores(
   { saldo, onSet }: { saldo: SaldoLinha[]; onSet: (provedor: string, saldoUsd: number) => Promise<void> },
 ) {
@@ -806,7 +811,7 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
             <tbody>
               {d.feature.map((f) => (
                 <tr key={f.feature}>
-                  <td>{f.feature}</td>
+                  <td>{FEATURE_LABEL[f.feature] ?? f.feature}</td>
                   <td className="num">{f.chamadas}</td>
                   <td className="num">{fmt(f.brl)}</td>
                 </tr>
