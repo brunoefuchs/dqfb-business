@@ -54,6 +54,9 @@ interface Custo {
   mes: { mes: string; brl: number; chamadas: number }[];
   dia: { dia: string; brl: number }[];
   usuaria: { usuaria: string; email?: string; brl: number; chamadas: number }[];
+  // (Top usuárias por período) recortes aditivos — ausentes no rollout caem no completo.
+  usuaria_ano?: { usuaria: string; email?: string; brl: number; chamadas: number }[];
+  usuaria_mes?: { usuaria: string; email?: string; brl: number; chamadas: number }[];
   // (saldo por provedor) card "Saldo dos provedores" — aditivo; ausente no rollout.
   saldo?: SaldoLinha[];
 }
@@ -689,6 +692,13 @@ function SaldoProvedores(
 function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string, saldoUsd: number) => Promise<void> }) {
   const maxDia = Math.max(1, ...d.dia.map((x) => x.brl));
   const maxProv = Math.max(1, ...d.provedor.map((x) => x.brl));
+  // (Top usuárias por período) toggle Completo / Este ano / Este mês — recorte client-side.
+  const [periodoU, setPeriodoU] = useState<'completo' | 'ano' | 'mes'>('completo');
+  const usuariaSel = periodoU === 'ano'
+    ? (d.usuaria_ano ?? d.usuaria)
+    : periodoU === 'mes'
+      ? (d.usuaria_mes ?? d.usuaria)
+      : d.usuaria;
   // (Story 12.B2 / AC-1) Campos aditivos do edge — ausentes no rollout (painel antes do
   // edge). Só mostra o card quando ambos vieram; senão esconde (sem quebrar o resto).
   const temCustoDia = d.custo_hoje_usd != null && d.teto_usd_dia != null;
@@ -846,9 +856,16 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
       </div>
 
       <div className="pdqfb-panel" style={{ marginTop: 18 }}>
-        <h2>
-          Top usuárias <small>por custo</small>
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <h2 style={{ margin: 0 }}>
+            Top usuárias <small>por custo</small>
+          </h2>
+          <div className="pdqfb-tabs" style={{ margin: 0, borderBottom: 'none' }}>
+            <button className={periodoU === 'completo' ? 'on' : ''} onClick={() => setPeriodoU('completo')}>Completo</button>
+            <button className={periodoU === 'ano' ? 'on' : ''} onClick={() => setPeriodoU('ano')}>Este ano</button>
+            <button className={periodoU === 'mes' ? 'on' : ''} onClick={() => setPeriodoU('mes')}>Este mês</button>
+          </div>
+        </div>
         <table>
           <thead>
             <tr>
@@ -858,7 +875,12 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
             </tr>
           </thead>
           <tbody>
-            {d.usuaria.map((u, i) => (
+            {usuariaSel.length === 0 ? (
+              <tr>
+                <td colSpan={3} style={{ color: 'var(--ink-3)', padding: '12px 0' }}>Sem uso no período.</td>
+              </tr>
+            ) : null}
+            {usuariaSel.map((u, i) => (
               <tr key={u.email || u.usuaria || i}>
                 <td>
                   {u.usuaria}
