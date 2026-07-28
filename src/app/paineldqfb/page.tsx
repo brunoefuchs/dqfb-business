@@ -33,6 +33,12 @@ interface Custo {
   dias_grafico: number;
   usd_brl: number;
   total_brl: number;
+  // (3 KPIs de tempo) aditivos — Completo (=total_*) · Este ano · Este mês.
+  total_usd?: number;
+  total_ano_brl?: number;
+  total_ano_usd?: number;
+  total_mes_brl?: number;
+  total_mes_usd?: number;
   chamadas: number;
   usuarias: number;
   custo_medio_brl: number;
@@ -43,11 +49,11 @@ interface Custo {
   // deployar ANTES do edge (rollout) → o card se esconde em vez de quebrar.
   custo_hoje_usd?: number;
   teto_usd_dia?: number;
-  provedor: { provedor: string; brl: number; chamadas: number }[];
+  provedor: { provedor: string; brl: number; usd?: number; chamadas: number }[];
   feature: { feature: string; brl: number; chamadas: number }[];
   mes: { mes: string; brl: number; chamadas: number }[];
   dia: { dia: string; brl: number }[];
-  usuaria: { usuaria: string; brl: number; chamadas: number }[];
+  usuaria: { usuaria: string; email?: string; brl: number; chamadas: number }[];
   // (saldo por provedor) card "Saldo dos provedores" — aditivo; ausente no rollout.
   saldo?: SaldoLinha[];
 }
@@ -692,9 +698,27 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
   return (
     <>
       <div className="pdqfb-kpis">
+        {/* (3 KPIs de tempo) Completo · Este ano · Este mês — R$ grande + US$ pequeno. */}
         <div className="pdqfb-kpi dark">
-          <div className="lbl">Total · histórico</div>
-          <div className="val">{fmt(d.total_brl)}</div>
+          <div className="lbl">Completo · desde sempre</div>
+          <div className="val">
+            {fmt(d.total_brl)}
+            <small>US$ {(d.total_usd ?? d.total_brl / d.usd_brl).toFixed(2)}</small>
+          </div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Este ano</div>
+          <div className="val">
+            {fmt(d.total_ano_brl ?? 0)}
+            <small>US$ {(d.total_ano_usd ?? 0).toFixed(2)}</small>
+          </div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Este mês</div>
+          <div className="val">
+            {fmt(d.total_mes_brl ?? 0)}
+            <small>US$ {(d.total_mes_usd ?? 0).toFixed(2)}</small>
+          </div>
         </div>
         <div className="pdqfb-kpi">
           <div className="lbl">Chamadas de IA</div>
@@ -749,7 +773,9 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
                 <div className="name">
                   {p.provedor} <small>{p.chamadas} chamadas</small>
                 </div>
-                <div className="v">{fmt(p.brl)}</div>
+                <div className="v">
+                  {fmt(p.brl)} <small>· US$ {(p.usd ?? p.brl / d.usd_brl).toFixed(2)}</small>
+                </div>
               </div>
               <div className="pdqfb-bar">
                 <span style={{ width: `${Math.round((p.brl / maxProv) * 100)}%` }} />
@@ -832,9 +858,17 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
             </tr>
           </thead>
           <tbody>
-            {d.usuaria.map((u) => (
-              <tr key={u.usuaria}>
-                <td>{u.usuaria}…</td>
+            {d.usuaria.map((u, i) => (
+              <tr key={u.email || u.usuaria || i}>
+                <td>
+                  {u.usuaria}
+                  {u.email ? (
+                    <>
+                      <br />
+                      <small style={{ color: 'var(--ink-3)' }}>{u.email}</small>
+                    </>
+                  ) : null}
+                </td>
                 <td className="num">{u.chamadas}</td>
                 <td className="num">{fmt(u.brl)}</td>
               </tr>
