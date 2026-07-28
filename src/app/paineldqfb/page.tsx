@@ -20,6 +20,15 @@ const fmt = (n: number) =>
   'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// (saldo por provedor) linha vinda do edge — âncora − gasto rastreado desde a âncora.
+interface SaldoLinha {
+  provedor: string;
+  saldo_usd: number;
+  gasto_desde_usd: number;
+  saldo_estimado_usd: number;
+  saldo_estimado_brl: number;
+  ancora_em: string;
+}
 interface Custo {
   dias_grafico: number;
   usd_brl: number;
@@ -39,6 +48,8 @@ interface Custo {
   mes: { mes: string; brl: number; chamadas: number }[];
   dia: { dia: string; brl: number }[];
   usuaria: { usuaria: string; brl: number; chamadas: number }[];
+  // (saldo por provedor) card "Saldo dos provedores" — aditivo; ausente no rollout.
+  saldo?: SaldoLinha[];
 }
 interface Fonte {
   tipo?: string;
@@ -209,6 +220,15 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
       setCarregando(false);
     }
   }, [api]);
+
+  // (saldo por provedor) grava a âncora de saldo e recarrega o custo (que traz o saldo).
+  const setSaldoAncora = useCallback(
+    async (provedor: string, saldoUsd: number) => {
+      await api('', { method: 'POST', body: JSON.stringify({ action: 'saldo_set', provedor, saldo_usd: saldoUsd }) });
+      await loadCusto();
+    },
+    [api, loadCusto],
+  );
 
   const loadFila = useCallback(async (st?: 'pendente' | 'revisadas') => {
     setErro('');
@@ -531,7 +551,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
         {erro ? <div className="pdqfb-err">{erro}</div> : null}
         {carregando ? <div className="pdqfb-loading">Carregando…</div> : null}
 
-        {!carregando && tab === 'custo' && custo ? <CustoView d={custo} /> : null}
+        {!carregando && tab === 'custo' && custo ? <CustoView d={custo} onSetSaldo={setSaldoAncora} /> : null}
         {!carregando && tab === 'revisar' && fila ? (
           <RevisarView
             itens={fila}
@@ -576,7 +596,80 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   );
 }
 
-function CustoView({ d }: { d: Custo }) {
+// (saldo por provedor) Card "Saldo dos provedores": o dono digita o saldo que o console
+// mostra e o painel desconta o gasto rastreado desde então. Estimativa — reancorar recalibra.
+const SALDO_PROVEDORES = ['Anthropic', 'OpenAI'];
+function SaldoProvedores(
+  { saldo, onSet }: { saldo: SaldoLinha[]; onSet: (provedor: string, saldoUsd: number) => Promise<void> },
+) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const byProv = new Map(saldo.map((s) => [s.provedor, s]));
+  const submit = async (prov: string) => {
+    const v = parseFloat((draft[prov] ?? '').replace(',', '.'));
+    if (!Number.isFinite(v) || v < 0) {
+      window.alert('Digite um valor válido (o saldo em US$ que o console mostra).');
+      return;
+    }
+    setSaving(prov);
+    try {
+      await onSet(prov, v);
+      setDraft((dd) => ({ ...dd, [prov]: '' }));
+    } catch (e) {
+      window.alert(String(e));
+    } finally {
+      setSaving(null);
+    }
+  };
+  return (
+    <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
+      <h2>Saldo dos provedores</h2>
+      <small style={{ display: 'block', marginBottom: 12, color: 'var(--ink-3)' }}>
+        Digite o saldo que o console mostra (Anthropic/OpenAI); o painel desconta o gasto rastreado
+        desde então. É estimativa — reancore quando quiser recalibrar.
+      </small>
+      {SALDO_PROVEDORES.map((prov, i) => {
+        const s = byProv.get(prov);
+        return (
+          <div
+            key={prov}
+            style={{ marginTop: i === 0 ? 0 : 14, paddingTop: i === 0 ? 0 : 14, borderTop: i === 0 ? 'none' : '1px solid rgba(128,128,128,0.25)' }}
+          >
+            <div className="pdqfb-row">
+              <div className="name"><strong>{prov}</strong></div>
+              <div className="v">
+                {s ? `${fmt(s.saldo_estimado_brl)} · US$ ${s.saldo_estimado_usd.toFixed(2)}` : '— não configurado'}
+              </div>
+            </div>
+            {s ? (
+              <small style={{ display: 'block', color: 'var(--ink-3)' }}>
+                gasto desde a âncora: US$ {s.gasto_desde_usd.toFixed(4)} · âncora em{' '}
+                {new Date(s.ancora_em).toLocaleString('pt-BR')}
+              </small>
+            ) : null}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+              <span style={{ color: 'var(--ink-3)' }}>US$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="saldo no console"
+                value={draft[prov] ?? ''}
+                onChange={(e) => setDraft((dd) => ({ ...dd, [prov]: e.target.value }))}
+                style={{ width: 150, padding: '6px 8px', borderRadius: 6, border: '1px solid rgba(128,128,128,0.35)', background: 'transparent', color: 'inherit' }}
+              />
+              <button className="b" onClick={() => submit(prov)} disabled={saving === prov}>
+                {saving === prov ? 'Salvando…' : 'Atualizar'}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string, saldoUsd: number) => Promise<void> }) {
   const maxDia = Math.max(1, ...d.dia.map((x) => x.brl));
   const maxProv = Math.max(1, ...d.provedor.map((x) => x.brl));
   // (Story 12.B2 / AC-1) Campos aditivos do edge — ausentes no rollout (painel antes do
@@ -608,6 +701,9 @@ function CustoView({ d }: { d: Custo }) {
           </div>
         </div>
       </div>
+
+      {/* (saldo por provedor) Card "Saldo dos provedores" — âncora − gasto rastreado. */}
+      <SaldoProvedores saldo={d.saldo ?? []} onSet={onSetSaldo} />
 
       {/* (Story 12.B2 / AC-1) Card "Custo IA do dia": consumo de hoje (dia BR) vs teto. */}
       {temCustoDia ? (
