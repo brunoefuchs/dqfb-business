@@ -86,6 +86,8 @@ interface AvaliadorResp {
   total: number;
   marcadas: number;
   curados: number;
+  arquivados?: number; // aba própria — não poluem "Não curado".
+  pendentes?: number; // reais (nem curado nem arquivado).
   confiar_semana?: ConfiarSemana[]; // (Story 12.B2) aditivo — métrica global do Avaliador.
 }
 
@@ -221,8 +223,8 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
 
   // (Story 12.B1) aba de status da fila do Avaliador — mirror de `luStatus`/`loadLu`.
   // Persiste no estado do componente pai: trocar de aba principal e voltar NÃO reseta.
-  const [avaliadorStatus, setAvaliadorStatus] = useState<'nao_curado' | 'curado'>('nao_curado');
-  const loadAvaliador = useCallback(async (st?: 'nao_curado' | 'curado') => {
+  const [avaliadorStatus, setAvaliadorStatus] = useState<'nao_curado' | 'curado' | 'arquivado'>('nao_curado');
+  const loadAvaliador = useCallback(async (st?: 'nao_curado' | 'curado' | 'arquivado') => {
     setErro('');
     setCarregando(true);
     try {
@@ -1023,8 +1025,8 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
 function AvaliadorView(
   { d, status, onStatus, onAcao }: {
     d: AvaliadorResp;
-    status: 'nao_curado' | 'curado';
-    onStatus: (st: 'nao_curado' | 'curado') => void;
+    status: 'nao_curado' | 'curado' | 'arquivado';
+    onStatus: (st: 'nao_curado' | 'curado' | 'arquivado') => void;
     onAcao: AcaoAvaliador;
   },
 ) {
@@ -1036,6 +1038,9 @@ function AvaliadorView(
       </button>
       <button className={status === 'curado' ? 'on' : ''} onClick={() => onStatus('curado')}>
         Curado
+      </button>
+      <button className={status === 'arquivado' ? 'on' : ''} onClick={() => onStatus('arquivado')}>
+        Arquivado
       </button>
     </div>
   );
@@ -1066,7 +1071,7 @@ function AvaliadorView(
         </div>
         <div className="pdqfb-kpi">
           <div className="lbl">Pendentes</div>
-          <div className="val">{d.total - d.curados}</div>
+          <div className="val">{d.pendentes ?? d.total - d.curados - (d.arquivados ?? 0)}</div>
         </div>
       </div>
       {/* (Story 12.B2 / AC-2) Card "%Confiar por semana" — de tudo que a Fran curou,
