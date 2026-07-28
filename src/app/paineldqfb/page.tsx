@@ -50,7 +50,11 @@ interface Custo {
   custo_hoje_usd?: number;
   teto_usd_dia?: number;
   provedor: { provedor: string; brl: number; usd?: number; chamadas: number }[];
+  provedor_ano?: { provedor: string; brl: number; usd?: number; chamadas: number }[];
+  provedor_mes?: { provedor: string; brl: number; usd?: number; chamadas: number }[];
   feature: { feature: string; brl: number; chamadas: number }[];
+  feature_ano?: { feature: string; brl: number; chamadas: number }[];
+  feature_mes?: { feature: string; brl: number; chamadas: number }[];
   mes: { mes: string; brl: number; chamadas: number }[];
   dia: { dia: string; brl: number }[];
   usuaria: { usuaria: string; email?: string; brl: number; chamadas: number }[];
@@ -613,6 +617,21 @@ const SALDO_PROVEDORES = ['Anthropic', 'OpenAI'];
 const FEATURE_LABEL: Record<string, string> = {
   tutor: 'Lu · tutor',
 };
+
+// (recorte de tempo) toggle reutilizado por Top usuárias / Por provedor / Por feature.
+type Periodo = 'completo' | 'ano' | 'mes';
+function PeriodoTabs({ value, onChange }: { value: Periodo; onChange: (p: Periodo) => void }) {
+  return (
+    <div className="pdqfb-tabs" style={{ margin: 0, borderBottom: 'none' }}>
+      <button className={value === 'completo' ? 'on' : ''} onClick={() => onChange('completo')}>Completo</button>
+      <button className={value === 'ano' ? 'on' : ''} onClick={() => onChange('ano')}>Este ano</button>
+      <button className={value === 'mes' ? 'on' : ''} onClick={() => onChange('mes')}>Este mês</button>
+    </div>
+  );
+}
+function pickPeriodo<T>(p: Periodo, completo: T, ano?: T, mes?: T): T {
+  return p === 'ano' ? (ano ?? completo) : p === 'mes' ? (mes ?? completo) : completo;
+}
 function SaldoProvedores(
   { saldo, onSet }: { saldo: SaldoLinha[]; onSet: (provedor: string, saldoUsd: number) => Promise<void> },
 ) {
@@ -696,14 +715,14 @@ function SaldoProvedores(
 
 function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string, saldoUsd: number) => Promise<void> }) {
   const maxDia = Math.max(1, ...d.dia.map((x) => x.brl));
-  const maxProv = Math.max(1, ...d.provedor.map((x) => x.brl));
-  // (Top usuárias por período) toggle Completo / Este ano / Este mês — recorte client-side.
-  const [periodoU, setPeriodoU] = useState<'completo' | 'ano' | 'mes'>('completo');
-  const usuariaSel = periodoU === 'ano'
-    ? (d.usuaria_ano ?? d.usuaria)
-    : periodoU === 'mes'
-      ? (d.usuaria_mes ?? d.usuaria)
-      : d.usuaria;
+  // (recorte de tempo) toggles independentes: Top usuárias / Por provedor / Por feature.
+  const [pU, setPU] = useState<Periodo>('completo');
+  const [pP, setPP] = useState<Periodo>('completo');
+  const [pF, setPF] = useState<Periodo>('completo');
+  const usuariaSel = pickPeriodo(pU, d.usuaria, d.usuaria_ano, d.usuaria_mes);
+  const provedorSel = pickPeriodo(pP, d.provedor, d.provedor_ano, d.provedor_mes);
+  const featureSel = pickPeriodo(pF, d.feature, d.feature_ano, d.feature_mes);
+  const maxProv = Math.max(1, ...provedorSel.map((x) => x.brl));
   // (Story 12.B2 / AC-1) Campos aditivos do edge — ausentes no rollout (painel antes do
   // edge). Só mostra o card quando ambos vieram; senão esconde (sem quebrar o resto).
   const temCustoDia = d.custo_hoje_usd != null && d.teto_usd_dia != null;
@@ -781,8 +800,11 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
 
       <div className="pdqfb-grid">
         <div className="pdqfb-panel">
-          <h2>Por provedor</h2>
-          {d.provedor.map((p) => (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+            <h2 style={{ margin: 0 }}>Por provedor</h2>
+            <PeriodoTabs value={pP} onChange={setPP} />
+          </div>
+          {provedorSel.map((p) => (
             <div key={p.provedor}>
               <div className="pdqfb-row">
                 <div className="name">
@@ -799,7 +821,10 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
           ))}
         </div>
         <div className="pdqfb-panel">
-          <h2>Por feature</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+            <h2 style={{ margin: 0 }}>Por feature</h2>
+            <PeriodoTabs value={pF} onChange={setPF} />
+          </div>
           <table>
             <thead>
               <tr>
@@ -809,7 +834,12 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
               </tr>
             </thead>
             <tbody>
-              {d.feature.map((f) => (
+              {featureSel.length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ color: 'var(--ink-3)', padding: '12px 0' }}>Sem uso no período.</td>
+                </tr>
+              ) : null}
+              {featureSel.map((f) => (
                 <tr key={f.feature}>
                   <td>{FEATURE_LABEL[f.feature] ?? f.feature}</td>
                   <td className="num">{f.chamadas}</td>
@@ -865,11 +895,7 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
           <h2 style={{ margin: 0 }}>
             Top usuárias <small>por custo</small>
           </h2>
-          <div className="pdqfb-tabs" style={{ margin: 0, borderBottom: 'none' }}>
-            <button className={periodoU === 'completo' ? 'on' : ''} onClick={() => setPeriodoU('completo')}>Completo</button>
-            <button className={periodoU === 'ano' ? 'on' : ''} onClick={() => setPeriodoU('ano')}>Este ano</button>
-            <button className={periodoU === 'mes' ? 'on' : ''} onClick={() => setPeriodoU('mes')}>Este mês</button>
-          </div>
+          <PeriodoTabs value={pU} onChange={setPU} />
         </div>
         <table>
           <thead>
