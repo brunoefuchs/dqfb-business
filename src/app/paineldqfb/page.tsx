@@ -55,6 +55,12 @@ interface Custo {
   feature: { feature: string; brl: number; chamadas: number }[];
   feature_ano?: { feature: string; brl: number; chamadas: number }[];
   feature_mes?: { feature: string; brl: number; chamadas: number }[];
+  // (origem do gasto) produto = aluna usando Lu/Mel/Avaliador/Localizador;
+  // painel = curadoria feita aqui dentro; terminal = scripts do dono. Tudo sai da
+  // MESMA API key, então tudo conta no total — o card só separa de onde veio.
+  origem?: { origem: string; brl: number; usd?: number; chamadas: number }[];
+  origem_ano?: { origem: string; brl: number; usd?: number; chamadas: number }[];
+  origem_mes?: { origem: string; brl: number; usd?: number; chamadas: number }[];
   mes: { mes: string; brl: number; chamadas: number }[];
   dia: { dia: string; brl: number }[];
   usuaria: { usuaria: string; email?: string; brl: number; chamadas: number }[];
@@ -616,6 +622,18 @@ const SALDO_PROVEDORES = ['Anthropic', 'OpenAI'];
 // tutor = motor da Lu (Dúvidas Receitas / Cozinha DQFB).
 const FEATURE_LABEL: Record<string, string> = {
   tutor: 'Lu · tutor',
+  lu_compor: 'Curadoria · compositor',
+  lu_guard_saida: 'Curadoria · guard',
+  lu_embed: 'Curadoria · embedding',
+};
+
+// (origem do gasto) De onde veio o custo. Tudo sai da mesma API key do console —
+// isto separa o que a ALUNA consumiu do que é ferramenta nossa (curadoria no painel
+// e scripts no terminal), que antes de 29/07/2026 não era registrado em lugar nenhum.
+const ORIGEM_LABEL: Record<string, string> = {
+  produto: 'Produto · alunas',
+  painel: 'Curadoria · painel',
+  terminal: 'Terminal · scripts',
 };
 
 // (recorte de tempo) toggle reutilizado por Top usuárias / Por provedor / Por feature.
@@ -715,12 +733,16 @@ function SaldoProvedores(
 
 function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string, saldoUsd: number) => Promise<void> }) {
   const maxDia = Math.max(1, ...d.dia.map((x) => x.brl));
-  // (recorte de tempo) toggles independentes: Top usuárias / Por provedor / Por feature.
+  // (recorte de tempo) toggles independentes: Top usuárias / Por provedor / Por feature / Por origem.
   const [pU, setPU] = useState<Periodo>('completo');
   const [pP, setPP] = useState<Periodo>('completo');
   const [pF, setPF] = useState<Periodo>('completo');
+  const [pO, setPO] = useState<Periodo>('completo');
   const usuariaSel = pickPeriodo(pU, d.usuaria, d.usuaria_ano, d.usuaria_mes);
   const provedorSel = pickPeriodo(pP, d.provedor, d.provedor_ano, d.provedor_mes);
+  // (origem) aditivo: edge antigo não manda o campo → o card inteiro se esconde.
+  const origemSel = pickPeriodo(pO, d.origem, d.origem_ano, d.origem_mes);
+  const maxOrigem = Math.max(1, ...(origemSel ?? []).map((x) => x.brl));
   const featureSel = pickPeriodo(pF, d.feature, d.feature_ano, d.feature_mes);
   const maxProv = Math.max(1, ...provedorSel.map((x) => x.brl));
   // (Story 12.B2 / AC-1) Campos aditivos do edge — ausentes no rollout (painel antes do
@@ -850,6 +872,34 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
           </table>
         </div>
       </div>
+
+      {origemSel && origemSel.length > 0 ? (
+        <div className="pdqfb-panel" style={{ marginTop: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+            <h2 style={{ margin: 0 }}>
+              Por origem <small>de onde veio o gasto</small>
+            </h2>
+            <PeriodoTabs value={pO} onChange={setPO} />
+          </div>
+          {origemSel.map((o) => (
+            <div key={o.origem} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <span>
+                  {ORIGEM_LABEL[o.origem] ?? o.origem} <small>{o.chamadas} chamadas</small>
+                </span>
+                <strong>{fmt(o.brl)}</strong>
+              </div>
+              <div className="pdqfb-bar">
+                <span style={{ width: `${Math.round((o.brl / maxOrigem) * 100)}%` }} />
+              </div>
+            </div>
+          ))}
+          <p style={{ color: 'var(--ink-3)', margin: '10px 0 0', fontSize: 13 }}>
+            Tudo sai da mesma chave da API — o total e o saldo somam as três. Curadoria e
+            terminal são ferramenta nossa, não consumo da aluna.
+          </p>
+        </div>
+      ) : null}
 
       <div className="pdqfb-panel" style={{ marginTop: 18 }}>
         <h2>
