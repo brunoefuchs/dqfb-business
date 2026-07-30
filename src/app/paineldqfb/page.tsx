@@ -153,6 +153,30 @@ interface LuItem {
   } | null;
   created_at: string;
 }
+// Lu do CURSO — o que as alunas perguntam dentro da área de membros da Hotmart.
+interface LuCursoRow {
+  id: string;
+  sessao_id: string | null;
+  pergunta: string;
+  resposta: string;
+  rota: 'verbatim' | 'gerada' | 'abstencao';
+  motivo: string | null;
+  fonte_topo: string | null;
+  score_topo: number | null;
+  created_at: string;
+}
+interface LuCursoResp {
+  rows: LuCursoRow[];
+  resumo: {
+    total_7d: number;
+    abstencoes_7d: number;
+    taxa_abstencao_7d: number;
+    usd_dia: number;
+    usd_mes: number;
+    teto_dia: number;
+  };
+}
+
 interface LuResp {
   itens: LuItem[];
   pendentes: number;
@@ -217,7 +241,7 @@ function usePainelApi() {
 
 function PainelDqfb({ onSair }: { onSair: () => void }) {
   const api = usePainelApi();
-  const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta'>('custo');
+  const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta' | 'lu-curso'>('custo');
   const [custo, setCusto] = useState<Custo | null>(null);
   const [fila, setFila] = useState<FilaItem[] | null>(null);
   const [melStatus, setMelStatus] = useState<'pendente' | 'revisadas'>('pendente');
@@ -277,6 +301,22 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
     }
   }, [api, avaliadorStatus]);
 
+  // Lu do CURSO (iframe Hotmart) — 🔴 aba SEPARADA da Lu do app por decisão do dono
+  // (30/07). Estado próprio, endpoint próprio: nada aqui cruza com a fila da Lu do app.
+  const [luCurso, setLuCurso] = useState<LuCursoResp | null>(null);
+  const [luCursoStatus, setLuCursoStatus] = useState<'tudo' | 'abstencao'>('tudo');
+  const loadLuCurso = useCallback(async (st?: 'tudo' | 'abstencao') => {
+    setErro('');
+    setCarregando(true);
+    try {
+      setLuCurso((await api('?fila=lu-curso&status=' + (st ?? luCursoStatus))) as LuCursoResp);
+    } catch (e) {
+      setErro(String(e));
+    } finally {
+      setCarregando(false);
+    }
+  }, [api, luCursoStatus]);
+
   const [luStatus, setLuStatus] = useState<'pendente' | 'revisadas'>('pendente');
   const loadLu = useCallback(async (st?: 'pendente' | 'revisadas') => {
     setErro('');
@@ -306,12 +346,13 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
     void loadCusto();
   }, [loadCusto]);
 
-  const trocarTab = (t: 'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta') => {
+  const trocarTab = (t: 'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta' | 'lu-curso') => {
     setTab(t);
     if (t === 'custo') void loadCusto();
     else if (t === 'revisar') void loadFila();
     else if (t === 'lu') void loadLu();
     else if (t === 'lu-proposta') void loadLuProp();
+    else if (t === 'lu-curso') void loadLuCurso();
     else void loadAvaliador();
   };
 
@@ -320,6 +361,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
     else if (tab === 'revisar') void loadFila();
     else if (tab === 'lu') void loadLu();
     else if (tab === 'lu-proposta') void loadLuProp();
+    else if (tab === 'lu-curso') void loadLuCurso();
     else void loadAvaliador();
   };
 
@@ -565,6 +607,9 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
           <button className={tab === 'lu-proposta' ? 'on' : ''} onClick={() => trocarTab('lu-proposta')}>
             Lu · Propostas
           </button>
+          <button className={tab === 'lu-curso' ? 'on' : ''} onClick={() => trocarTab('lu-curso')}>
+            Lu · Curso
+          </button>
         </div>
 
         {erro ? <div className="pdqfb-err">{erro}</div> : null}
@@ -609,6 +654,16 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
         ) : null}
         {!carregando && tab === 'lu-proposta' && luProp ? (
           <LuPropostaView d={luProp} minerando={minerando} onMinerar={minerar} onAcao={acaoProposta} />
+        ) : null}
+        {!carregando && tab === 'lu-curso' && luCurso ? (
+          <LuCursoView
+            d={luCurso}
+            status={luCursoStatus}
+            onStatus={(st) => {
+              setLuCursoStatus(st);
+              void loadLuCurso(st);
+            }}
+          />
         ) : null}
       </div>
     </>
@@ -2044,5 +2099,133 @@ export default function Page() {
         setLogado(false);
       }}
     />
+  );
+}
+
+// ─── Lu · Curso ───────────────────────────────────────────────────────────────
+// 🔴 REGRA MASTER (dono, 30/07): aba SEPARADA da Lu do app, de ponta a ponta.
+// O que ela existe para responder, em ordem de importância:
+//   1. o que a Lu NÃO soube responder (abstenção = buraco do acervo)
+//   2. quanto o curso está gastando contra o teto próprio de US$1,50/dia
+//   3. o histórico, para o dono ler as alunas com as próprias palavras
+// Somente leitura: curar daqui viraria um segundo fluxo de curadoria concorrendo
+// com o do app. A ação sobre um buraco é acrescentar FAQ ao acervo do curso.
+function LuCursoView({
+  d,
+  status,
+  onStatus,
+}: {
+  d: LuCursoResp;
+  status: 'tudo' | 'abstencao';
+  onStatus: (st: 'tudo' | 'abstencao') => void;
+}) {
+  const r = d.resumo;
+  const pct = (r.taxa_abstencao_7d * 100).toFixed(1);
+  // teto é do DIA: passar de 80% dele merece aviso antes de a Lu emudecer no ar.
+  const perto = r.teto_dia > 0 && r.usd_dia >= r.teto_dia * 0.8;
+
+  return (
+    <>
+      <div className="pdqfb-tabs" style={{ margin: '0 0 14px', borderBottom: 'none' }}>
+        <button className={status === 'tudo' ? 'on' : ''} onClick={() => onStatus('tudo')}>
+          Tudo
+        </button>
+        <button className={status === 'abstencao' ? 'on' : ''} onClick={() => onStatus('abstencao')}>
+          Só o que ela não soube
+        </button>
+      </div>
+
+      <div className="pdqfb-kpis">
+        <div className="pdqfb-kpi dark">
+          <div className="lbl">Perguntas (7 dias)</div>
+          <div className="val">{r.total_7d}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Não soube responder</div>
+          <div className="val">
+            {r.abstencoes_7d} <span style={{ fontSize: '0.6em', opacity: 0.7 }}>({pct}%)</span>
+          </div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Gasto hoje</div>
+          <div className="val" style={perto ? { color: '#b3261e' } : undefined}>
+            US$ {r.usd_dia.toFixed(2)}
+            <span style={{ fontSize: '0.55em', opacity: 0.7 }}> / {r.teto_dia.toFixed(2)}</span>
+          </div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Gasto no mês</div>
+          <div className="val">US$ {r.usd_mes.toFixed(2)}</div>
+        </div>
+      </div>
+
+      {perto ? (
+        <div className="pdqfb-err">
+          Perto do teto do dia. Ao encostar, a Lu do Curso passa a encaminhar para a Mi em vez de
+          responder — e volta sozinha amanhã. A Lu do app não é afetada.
+        </div>
+      ) : null}
+
+      <div className="pdqfb-filahead">
+        {d.rows.length} conversa(s) ·{' '}
+        {status === 'abstencao'
+          ? 'cada uma aqui é uma FAQ que falta no acervo do curso'
+          : '📗 acervo do curso · 📘 acervo do app · ⚠️ não soube'}
+      </div>
+
+      {d.rows.length === 0 ? (
+        <div className="pdqfb-loading">
+          {status === 'abstencao'
+            ? 'Nenhuma abstenção no período. 💛'
+            : 'Nenhuma conversa ainda — a Lu do Curso ainda não foi usada.'}
+        </div>
+      ) : (
+        d.rows.map((c) => <LuCursoCard key={c.id} c={c} />)
+      )}
+    </>
+  );
+}
+
+const LU_CURSO_MOTIVO: Record<string, string> = {
+  sem_fonte: 'nada parecido no acervo',
+  guard_reprovou: 'o guard barrou a resposta',
+  guard_indisponivel: 'guard fora do ar (barra por segurança)',
+  geracao_falhou: 'falha ao gerar',
+  geracao_vazia: 'o modelo voltou vazio',
+  embed_falhou: 'falha ao interpretar a pergunta',
+  busca_falhou: 'falha na busca',
+  teto: 'teto de custo do dia',
+};
+
+function LuCursoCard({ c }: { c: LuCursoRow }) {
+  const abst = c.rota === 'abstencao';
+  const selo = abst ? '⚠️' : c.fonte_topo === 'app' ? '📘' : '📗';
+  const quando = new Date(c.created_at).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo', // dia BR, nunca UTC — regra da casa
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return (
+    <div className="pdqfb-rcard" style={abst ? { borderLeft: '3px solid #b3261e' } : undefined}>
+      <div className="pdqfb-row" style={{ justifyContent: 'space-between', gap: 8 }}>
+        <strong style={{ flex: 1 }}>
+          {selo} {c.pergunta}
+        </strong>
+        <span style={{ fontSize: 12, opacity: 0.6, whiteSpace: 'nowrap' }}>{quando}</span>
+      </div>
+      <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', opacity: abst ? 0.75 : 1 }}>
+        {c.resposta}
+      </p>
+      <div className="pdqfb-note" style={{ marginTop: 8 }}>
+        {abst
+          ? `não respondeu — ${LU_CURSO_MOTIVO[c.motivo ?? ''] ?? c.motivo ?? 'motivo não registrado'}`
+          : c.rota === 'verbatim'
+            ? `resposta curada, entregue como está (${c.fonte_topo === 'app' ? 'acervo do app' : 'acervo do curso'})`
+            : `gerada e aprovada pelo guard (${c.fonte_topo === 'app' ? 'acervo do app' : 'acervo do curso'})`}
+        {c.score_topo != null ? ` · proximidade ${c.score_topo.toFixed(2)}` : ''}
+      </div>
+    </div>
   );
 }
