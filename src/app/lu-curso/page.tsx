@@ -125,34 +125,6 @@ export default function LuCursoPage() {
   const [carregando, setCarregando] = useState(false);
   const fimRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  // Altura MEDIDA do quadro, em pixels. Três tentativas de deduzi-la por CSS
-  // falharam dentro do app da Hotmart (h-dvh, fixed inset-0, height:100%
-  // encadeado): no WebView do iOS todas devolvem a altura da JANELA, não a do
-  // iframe. Medir é a única forma de saber — clientHeight do documento é o
-  // viewport real deste iframe, seja qual for a altura que a Hotmart deu.
-  const [alturaQuadro, setAlturaQuadro] = useState<number | null>(null);
-
-  useEffect(() => {
-    const medir = () => {
-      const h =
-        window.visualViewport?.height ??
-        document.documentElement.clientHeight ??
-        window.innerHeight;
-      // < 150px é medida inválida (quadro ainda montando) — melhor cair no 100%
-      // do CSS do que travar o chat numa altura absurda.
-      setAlturaQuadro(Number.isFinite(h) && h > 150 ? Math.round(h) : null);
-    };
-    medir();
-    // o quadro muda quando o teclado abre, na rotação, e quando a aula recalcula
-    window.addEventListener('resize', medir);
-    window.visualViewport?.addEventListener('resize', medir);
-    const t = setTimeout(medir, 300); // 2ª medida: a 1ª pega o iframe antes do layout final
-    return () => {
-      window.removeEventListener('resize', medir);
-      window.visualViewport?.removeEventListener('resize', medir);
-      clearTimeout(t);
-    };
-  }, []);
 
   useEffect(() => {
     fimRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -207,10 +179,7 @@ export default function LuCursoPage() {
            mais alto que o quadro e o rodapé sai de vista de novo. */
         body{min-height:0}
       `}</style>
-      <main
-        className="flex h-full flex-col overflow-hidden bg-surface-container-low font-body"
-        style={alturaQuadro ? { height: `${alturaQuadro}px` } : undefined}
-      >
+      <main className="flex h-full flex-col overflow-hidden bg-surface-container-low font-body">
       {/* cabeçalho */}
       <header className="flex items-center gap-2 bg-primary px-3 py-2 text-on-primary shadow-sm">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-sm">
@@ -236,10 +205,7 @@ export default function LuCursoPage() {
         bloqueava justamente esse gesto e travava nas duas pontas — a aluna não
         chegava nem ao começo da conversa nem ao campo de digitar.
       */}
-      <div
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3"
-        style={{ WebkitOverflowScrolling: 'touch' }}
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
         <div className="mx-auto flex max-w-2xl flex-col gap-2">
           {msgs.map((m, i) => (
             <div
