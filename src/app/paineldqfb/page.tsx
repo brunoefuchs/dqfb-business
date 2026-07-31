@@ -2265,6 +2265,7 @@ function LuCursoCard({
   const [salvando, setSalvando] = useState(false);
 
   const selo = abst ? '⚠️' : doApp ? '📘' : '📗';
+  const acervo = doApp ? 'acervo do app' : 'acervo do curso';
   const quando = new Date(c.created_at).toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo', // dia BR, nunca UTC — regra da casa
     day: '2-digit',
@@ -2287,99 +2288,84 @@ function LuCursoCard({
   };
 
   return (
-    <div
-      className="pdqfb-rcard"
-      style={{
-        borderLeft: abst ? '3px solid #b3261e' : undefined,
-        opacity: c.revisada_em ? 0.72 : 1,
-      }}
-    >
-      <div className="pdqfb-row" style={{ justifyContent: 'space-between', gap: 8 }}>
-        <strong style={{ flex: 1 }}>
-          {selo} {c.pergunta}
-        </strong>
-        <span style={{ fontSize: 12, opacity: 0.6, whiteSpace: 'nowrap' }}>
-          {c.revisada_em ? '✓ ' : ''}
-          {quando}
+    <div className="pdqfb-rcard" style={c.revisada_em ? { opacity: 0.72 } : undefined}>
+      {/* mesma anatomia dos outros cards do painel: tarja de contexto, pergunta
+          em serifa, resposta em bloco recuado, ações no rodapé */}
+      <div className="rhead">
+        <span className="tier">
+          {selo} {abst ? 'não soube' : acervo}
         </span>
+        {c.score_topo != null ? <span>proximidade {c.score_topo.toFixed(2)}</span> : null}
+        {c.revisada_em ? <span>✓ revisada</span> : null}
+        <span className="rdata">{quando}</span>
       </div>
 
-      <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', opacity: abst ? 0.75 : 1 }}>
-        {c.resposta}
-      </p>
+      <div className="rperg">{c.pergunta}</div>
+      <div className="rresp">{c.resposta}</div>
 
-      {/* O que o guard barrou: a aluna não viu, mas é o que explica a abstenção. */}
-      {c.resposta_barrada ? (
-        <details style={{ marginTop: 8 }}>
-          <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.7 }}>
-            ver o texto que o guard barrou
-          </summary>
-          <p
-            style={{
-              margin: '6px 0 0',
-              whiteSpace: 'pre-wrap',
-              fontSize: 13,
-              opacity: 0.8,
-              borderLeft: '2px solid #ddd',
-              paddingLeft: 8,
-            }}
-          >
-            {c.resposta_barrada}
-          </p>
-        </details>
-      ) : null}
-
-      <div className="pdqfb-note" style={{ marginTop: 8 }}>
+      <div className="pdqfb-note" style={{ marginTop: 10 }}>
         {abst
           ? `não respondeu — ${LU_CURSO_MOTIVO[(c.motivo ?? '').split(':')[0]] ?? c.motivo ?? 'motivo não registrado'}`
           : c.rota === 'verbatim'
-            ? `resposta curada, entregue como está (${doApp ? 'acervo do app' : 'acervo do curso'})`
-            : `gerada e aprovada pelo guard (${doApp ? 'acervo do app' : 'acervo do curso'})`}
-        {c.score_topo != null ? ` · proximidade ${c.score_topo.toFixed(2)}` : ''}
+            ? `resposta curada, entregue como está (${acervo})`
+            : `gerada e aprovada pelo guard (${acervo})`}
       </div>
 
+      {/* O que o guard barrou: a aluna não viu, mas é o que explica a abstenção. */}
+      {c.resposta_barrada ? (
+        <details className="lu-bastidores">
+          <summary>
+            <span className="lu-onde">barrado pelo guard</span> ver o texto que a aluna não recebeu
+          </summary>
+          <div className="lu-tent">
+            <div className="lu-tent-gen">{c.resposta_barrada}</div>
+          </div>
+        </details>
+      ) : null}
+
       {editando ? (
-        <div style={{ marginTop: 10 }}>
-          <label style={{ fontSize: 12, opacity: 0.7 }}>
-            Pergunta que a Lu vai reconhecer (a redação da aluna costuma ser a melhor)
-          </label>
-          <input
-            value={chave}
-            onChange={(e) => setChave(e.target.value)}
-            style={{ width: '100%', padding: 8, marginTop: 4, fontSize: 14 }}
-          />
-          <label style={{ fontSize: 12, opacity: 0.7, display: 'block', marginTop: 8 }}>
-            Resposta que a aluna do CURSO deve receber
-          </label>
-          <textarea
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            rows={7}
-            style={{ width: '100%', padding: 8, marginTop: 4, fontSize: 14 }}
-          />
-          <p className="pdqfb-note" style={{ marginTop: 6 }}>
+        <div className="promform">
+          <div>
+            <div className="hint">Pergunta que a Lu vai reconhecer</div>
+            <input className="pi" value={chave} onChange={(e) => setChave(e.target.value)} />
+            <div className="lu-bast-nota" style={{ marginTop: 4 }}>
+              a redação da aluna costuma ser a melhor chave — mude só se estiver confusa
+            </div>
+          </div>
+          <div>
+            <div className="hint">Resposta que a aluna do CURSO deve receber</div>
+            <textarea
+              className="pi"
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              style={{ minHeight: 320, lineHeight: 1.55 }}
+            />
+          </div>
+          <div className="lu-tent-motivo">
             {doApp && !abst
               ? '📘 Esta resposta veio do acervo do APP. Salvar cria uma versão-curso: a Lu do curso passa a usar a sua, e a Lu do app continua com a original, intacta.'
               : abst
                 ? '⚠️ Vira resposta nova no acervo do CURSO. Só o curso passa a saber respondê-la.'
                 : '📗 Edita a entrada do acervo do CURSO. O app não é afetado.'}
-          </p>
-          <div className="pdqfb-row" style={{ gap: 8, marginTop: 8 }}>
-            <button onClick={salvar} disabled={salvando || !texto.trim()}>
-              {salvando ? 'Salvando…' : '💾 Salvar para o curso'}
+          </div>
+          <div className="racoes">
+            <button className="b pink" onClick={salvar} disabled={salvando || !texto.trim()}>
+              {salvando ? 'Salvando…' : 'Salvar para o curso'}
             </button>
-            <button onClick={() => setEditando(false)} disabled={salvando}>
+            <button className="b" onClick={() => setEditando(false)} disabled={salvando}>
               Cancelar
             </button>
           </div>
         </div>
       ) : (
-        <div className="pdqfb-row" style={{ gap: 8, marginTop: 10 }}>
-          <button onClick={() => setEditando(true)}>
-            {abst ? '➕ Ensinar a resposta' : doApp ? '✏️ Corrigir para o curso' : '✏️ Corrigir'}
+        <div className="racoes">
+          <button className="b" onClick={() => setEditando(true)}>
+            {abst ? 'Ensinar a resposta' : doApp ? 'Corrigir para o curso' : 'Corrigir'}
           </button>
           {!c.revisada_em ? (
-            <button onClick={() => onAcao('lu_curso_ok', c.id)}>✅ Está boa</button>
+            <button className="b ok" onClick={() => onAcao('lu_curso_ok', c.id)}>
+              Está boa
+            </button>
           ) : null}
         </div>
       )}
