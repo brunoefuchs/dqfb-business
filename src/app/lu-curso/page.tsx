@@ -190,28 +190,29 @@ export default function LuCursoPage() {
             </div>
           )}
 
-          {/* sugestões só na tela vazia: depois da 1ª pergunta viram ruído */}
-          {primeiraPergunta && !carregando && (
-            <div className="mt-1 flex flex-wrap gap-2">
-              {SUGESTOES.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => enviar(s)}
-                  className="rounded-full border border-outline-variant bg-surface-container-lowest px-2.5 py-1 text-[11px] text-on-surface-variant transition hover:bg-surface-container"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div ref={fimRef} />
         </div>
       </div>
 
       {/* composer */}
       <div className="border-t border-outline-variant bg-surface-container-lowest px-3 py-2">
+        {/* Sugestões coladas no campo de escrever, não no fim da conversa: no
+            celular é onde o polegar já está, e assim elas não empurram a saudação
+            para fora da tela. Somem depois da 1ª pergunta — aí viram ruído. */}
+        {primeiraPergunta && !carregando && (
+          <div className="mx-auto mb-2 flex max-w-2xl flex-wrap gap-1.5">
+            {SUGESTOES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => enviar(s)}
+                className="rounded-full border border-outline-variant bg-surface px-2.5 py-1 text-[11px] text-on-surface-variant transition hover:bg-surface-container"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
         <form
           className="mx-auto flex max-w-2xl items-end gap-2"
           onSubmit={(e) => {
