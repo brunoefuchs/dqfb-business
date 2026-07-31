@@ -193,10 +193,13 @@ export default function LuCursoPage() {
         `overflow-y-auto` não tem o que rolar (o elemento nunca fica menor que o
         conteúdo). Era por isso que dava para ir ao fim (o scroll automático das
         mensagens novas empurrava) mas não para voltar ao começo.
-        `overscroll-contain` impede que o gesto, ao chegar no topo, vaze para a
-        página da aula por baixo do iframe.
+        SEM `overscroll-contain`, e isto é deliberado: o iframe da aula tem
+        min-height:700px, ou seja, é MAIOR que a tela do celular. Quem rola para
+        alcançar o rodapé é a página da aula, não este div. Conter o overscroll
+        bloqueava justamente esse gesto e travava nas duas pontas — a aluna não
+        chegava nem ao começo da conversa nem ao campo de digitar.
       */}
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
         <div className="mx-auto flex max-w-2xl flex-col gap-2">
           {msgs.map((m, i) => (
             <div
