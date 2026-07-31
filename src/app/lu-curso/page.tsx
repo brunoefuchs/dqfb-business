@@ -233,8 +233,10 @@ export default function LuCursoPage() {
             }}
             rows={1}
             maxLength={1000}
-            placeholder="Escreva sua dúvida..."
-            aria-label="Sua dúvida para a Lu"
+            // Caixa alta de propósito (pedido do dono, 31/07): é o que o Chatbase
+            // usava, e a aluna precisa achar onde digitar sem procurar.
+            placeholder="DIGITE AQUI SUA PERGUNTA..."
+            aria-label="Digite aqui sua pergunta para a Lu"
             className="max-h-28 min-h-[38px] flex-1 resize-none rounded-2xl border border-outline-variant bg-surface px-3 py-2 text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:border-primary"
           />
           <button
