@@ -8,31 +8,38 @@
  *
  * Onde ela roda: dentro de um <iframe> numa aula da Hotmart. Duas consequências
  * de projeto que valem estar escritas:
- *   • `fixed inset-0` (NÃO h-dvh — ver comentário no <main>), nunca a página
- *     inteira rolando por fora
+ *   • altura percentual encadeada html→body→main (NÃO h-dvh, NÃO fixed — as duas
+ *     falharam no WebView do iOS; ver comentário no <main>)
  *   • sem login: a aluna já entrou na área de membros; não há sessão Supabase
  *     aqui. A identidade que existe é o id de sessão do navegador, usado só
  *     para rate limit — nenhum dado dela é gravado.
  *
  * Como colar na Hotmart (vai no runbook também):
  *   <iframe src="https://www.businessdqfb.francielecaleffi.com.br/lu-curso"
- *           style="width:100%;height:640px;border:0;border-radius:16px"></iframe>
+ *           width="100%" frameborder="0"
+ *           style="background-color:initial;height:100%;min-height:700px;border:0;border-radius:16px">
+ *   </iframe>
  *
- * ⚠️ O APP da Hotmart ignora essa altura e entrega um quadro bem mais baixo
- * (~250px, medido em 31/07). Por isso o layout precisa sobreviver a qualquer
- * altura: daí o `fixed inset-0` e os ajustes em @media (max-height: 430px).
+ * ⚠️ `min-height:700px` NÃO é chute: é o que o Chatbase usava nesta mesma aula e
+ * o que comprovadamente funciona no APP da Hotmart. Altura fixa curta (640px,
+ * 400px) fazia o app cortar o quadro e o campo de digitar sumia. Com 700px o
+ * iframe fica MAIOR que a tela do celular e quem rola é a página da aula — por
+ * isso a lista de mensagens NÃO usa overscroll-contain (ver comentário lá).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const EDGE = 'https://xwiomidydfappnrrsjqh.supabase.co/functions/v1/tutor-curso';
 
-/** Perguntas de partida — as 4 que mais chegam no suporte, segundo o dono (30/07). */
+/**
+ * Perguntas de partida — as que mais chegam no suporte, segundo o dono (30/07).
+ * São TRÊS de propósito: cabem numa linha só. A quarta ("Posso substituir a
+ * manteiga ghee?") quebrava para a segunda linha e roubava altura do chat.
+ */
 const SUGESTOES = [
   'Onde eu baixo o ConfeitBook?',
   'Como funciona o suporte do curso?',
   'Qual o grupo de WhatsApp das alunas?',
-  'Posso substituir a manteiga ghee?',
 ];
 
 const SAUDACAO =
@@ -178,12 +185,11 @@ export default function LuCursoPage() {
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-sm">
           💛
         </div>
-        <div className="min-w-0">
-          <p className="font-display text-[13px] leading-tight font-semibold">Lu</p>
-          <p className="truncate text-[10px] opacity-80 [@media(max-height:430px)]:hidden">
-            a IA do Doce que Faz Bem
-          </p>
-        </div>
+        {/* Uma linha só (pedido do dono, 31/07): é como o Chatbase se
+            apresentava, e a segunda linha custava altura de conversa. */}
+        <p className="truncate font-display text-[13px] leading-tight font-semibold">
+          Lu IA DQFB
+        </p>
       </header>
 
       {/* conversa */}
