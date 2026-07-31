@@ -307,8 +307,8 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   // Lu do CURSO (iframe Hotmart) — 🔴 aba SEPARADA da Lu do app por decisão do dono
   // (30/07). Estado próprio, endpoint próprio: nada aqui cruza com a fila da Lu do app.
   const [luCurso, setLuCurso] = useState<LuCursoResp | null>(null);
-  const [luCursoStatus, setLuCursoStatus] = useState<'pendente' | 'abstencao' | 'tudo'>('pendente');
-  const loadLuCurso = useCallback(async (st?: 'pendente' | 'abstencao' | 'tudo') => {
+  const [luCursoStatus, setLuCursoStatus] = useState<'pendente' | 'abstencao' | 'revisadas' | 'tudo'>('pendente');
+  const loadLuCurso = useCallback(async (st?: 'pendente' | 'abstencao' | 'revisadas' | 'tudo') => {
     setErro('');
     setCarregando(true);
     try {
@@ -1997,6 +1997,18 @@ const CSS = `
 .pdqfb-rcard .lu-tent-cab{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px;}
 .pdqfb-rcard .lu-tent-gen{font-size:13px;line-height:1.5;color:var(--ink-2);white-space:pre-wrap;max-height:160px;overflow:auto;}
 .pdqfb-rcard .lu-tent-motivo{margin-top:8px;font-size:12px;line-height:1.45;color:#8A2A32;background:#FBEEF0;border-radius:8px;padding:7px 10px;}
+/* ── Lu · Curso: contornos mais firmes ───────────────────────────────────────
+   O painel inteiro usa --hairline, que é discreto de propósito. Nesta aba a
+   leitura é comparativa (resposta que saiu × resposta que vai substituir) e o
+   traço fino sumia no branco: o dono não distinguia onde um bloco terminava e
+   o outro começava. Escopado em .lu-curso para não escurecer as outras abas. */
+.pdqfb-rcard.lu-curso{border-color:var(--ink-4);box-shadow:0 1px 2px rgba(28,27,27,0.04);}
+.pdqfb-rcard.lu-curso .rresp{border:1px solid var(--hairline);}
+.pdqfb-rcard.lu-curso .promform{border-top:1px solid var(--ink-4);}
+.pdqfb-rcard.lu-curso .pi{border-color:var(--ink-4);}
+.pdqfb-rcard.lu-curso .pi:focus{border-color:var(--pinky);outline:none;}
+.pdqfb-rcard.lu-curso .lu-tent-motivo{border:1px solid #E9C3C8;}
+.pdqfb-rcard.lu-curso.revisada{opacity:0.72;border-style:dashed;}
 .pdqfb-rcard .lu-bast-nota{margin-top:10px;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:0.06em;color:var(--ink-3);font-style:italic;}
 .pdqfb-acard{background:var(--paper);border:1px solid var(--hairline);border-radius:14px;padding:14px 16px;margin-bottom:10px;}
 .pdqfb-acard .ahead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
@@ -2151,8 +2163,8 @@ function LuCursoView({
   onAcao,
 }: {
   d: LuCursoResp;
-  status: 'pendente' | 'abstencao' | 'tudo';
-  onStatus: (st: 'pendente' | 'abstencao' | 'tudo') => void;
+  status: 'pendente' | 'abstencao' | 'revisadas' | 'tudo';
+  onStatus: (st: 'pendente' | 'abstencao' | 'revisadas' | 'tudo') => void;
   onAcao: (
     a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
     id: string,
@@ -2173,6 +2185,9 @@ function LuCursoView({
         </button>
         <button className={status === 'abstencao' ? 'on' : ''} onClick={() => onStatus('abstencao')}>
           Só o que ela não soube
+        </button>
+        <button className={status === 'revisadas' ? 'on' : ''} onClick={() => onStatus('revisadas')}>
+          Já revisadas
         </button>
         <button className={status === 'tudo' ? 'on' : ''} onClick={() => onStatus('tudo')}>
           Tudo
@@ -2223,7 +2238,9 @@ function LuCursoView({
             ? 'Nada a revisar — tudo em dia por aqui. 💛'
             : status === 'abstencao'
               ? 'Nenhuma abstenção no período. 💛'
-              : 'Nenhuma conversa ainda — a Lu do Curso ainda não foi usada.'}
+              : status === 'revisadas'
+                ? 'Nenhuma revisada ainda — o que você aprovar ou corrigir aparece aqui.'
+                : 'Nenhuma conversa ainda — a Lu do Curso ainda não foi usada.'}
         </div>
       ) : (
         d.rows.map((c) => <LuCursoCard key={c.id} c={c} onAcao={onAcao} />)
@@ -2288,7 +2305,7 @@ function LuCursoCard({
   };
 
   return (
-    <div className="pdqfb-rcard" style={c.revisada_em ? { opacity: 0.72 } : undefined}>
+    <div className={`pdqfb-rcard lu-curso${c.revisada_em ? ' revisada' : ''}`}>
       {/* mesma anatomia dos outros cards do painel: tarja de contexto, pergunta
           em serifa, resposta em bloco recuado, ações no rodapé */}
       <div className="rhead">
@@ -2359,7 +2376,7 @@ function LuCursoCard({
         </div>
       ) : (
         <div className="racoes">
-          <button className="b" onClick={() => setEditando(true)}>
+          <button className="b pink" onClick={() => setEditando(true)}>
             {abst ? 'Ensinar a resposta' : doApp ? 'Corrigir para o curso' : 'Corrigir'}
           </button>
           {!c.revisada_em ? (
