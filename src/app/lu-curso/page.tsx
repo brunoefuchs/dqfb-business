@@ -8,7 +8,8 @@
  *
  * Onde ela roda: dentro de um <iframe> numa aula da Hotmart. Duas consequências
  * de projeto que valem estar escritas:
- *   • altura 100% do iframe (h-dvh), nunca a página inteira rolando por fora
+ *   • `fixed inset-0` (NÃO h-dvh — ver comentário no <main>), nunca a página
+ *     inteira rolando por fora
  *   • sem login: a aluna já entrou na área de membros; não há sessão Supabase
  *     aqui. A identidade que existe é o id de sessão do navegador, usado só
  *     para rate limit — nenhum dado dela é gravado.
@@ -16,6 +17,10 @@
  * Como colar na Hotmart (vai no runbook também):
  *   <iframe src="https://www.businessdqfb.francielecaleffi.com.br/lu-curso"
  *           style="width:100%;height:640px;border:0;border-radius:16px"></iframe>
+ *
+ * ⚠️ O APP da Hotmart ignora essa altura e entrega um quadro bem mais baixo
+ * (~250px, medido em 31/07). Por isso o layout precisa sobreviver a qualquer
+ * altura: daí o `fixed inset-0` e os ajustes em @media (max-height: 430px).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -146,7 +151,13 @@ export default function LuCursoPage() {
   const primeiraPergunta = msgs.length === 1;
 
   return (
-    <main className="flex h-dvh flex-col bg-surface-container-low font-body">
+    // `fixed inset-0` e NÃO `h-dvh`: dentro do iframe do app da Hotmart (WebView
+    // iOS), `dvh` devolve a altura da JANELA DO APP, não a do iframe. A página
+    // nascia com ~800px dentro de um quadro de ~250px e o rodapé — o campo de
+    // digitar — ficava fora da área visível, sem rolagem que o alcançasse.
+    // `fixed` se ancora ao viewport do próprio iframe, qualquer que seja a altura
+    // que a Hotmart imponha. (Achado do dono no celular, 31/07.)
+    <main className="fixed inset-0 flex flex-col bg-surface-container-low font-body">
       {/* cabeçalho */}
       <header className="flex items-center gap-2 bg-primary px-3 py-2 text-on-primary shadow-sm">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-sm">
@@ -154,7 +165,9 @@ export default function LuCursoPage() {
         </div>
         <div className="min-w-0">
           <p className="font-display text-[13px] leading-tight font-semibold">Lu</p>
-          <p className="truncate text-[10px] opacity-80">a IA do Doce que Faz Bem</p>
+          <p className="truncate text-[10px] opacity-80 [@media(max-height:430px)]:hidden">
+            a IA do Doce que Faz Bem
+          </p>
         </div>
       </header>
 
@@ -200,13 +213,13 @@ export default function LuCursoPage() {
             celular é onde o polegar já está, e assim elas não empurram a saudação
             para fora da tela. Somem depois da 1ª pergunta — aí viram ruído. */}
         {primeiraPergunta && !carregando && (
-          <div className="mx-auto mb-2 flex max-w-2xl flex-wrap gap-1.5">
+          <div className="mx-auto mb-2 flex max-w-2xl flex-wrap gap-1.5 [@media(max-height:430px)]:mb-1 [@media(max-height:430px)]:flex-nowrap [@media(max-height:430px)]:overflow-x-auto">
             {SUGESTOES.map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => enviar(s)}
-                className="rounded-full border border-outline-variant bg-surface px-2.5 py-1 text-[11px] text-on-surface-variant transition hover:bg-surface-container"
+                className="shrink-0 rounded-full border border-outline-variant bg-surface px-2.5 py-1 text-[11px] whitespace-nowrap text-on-surface-variant transition hover:bg-surface-container"
               >
                 {s}
               </button>
@@ -249,7 +262,7 @@ export default function LuCursoPage() {
           </button>
         </form>
         {/* Disclosure de IA — exigência do parecer jurídico (EPIC-10, aprovado 30/06). */}
-        <p className="mx-auto mt-1.5 max-w-2xl text-center text-[10px] leading-snug text-on-surface-variant/70">
+        <p className="mx-auto mt-1.5 max-w-2xl text-center text-[10px] leading-snug text-on-surface-variant/70 [@media(max-height:430px)]:mt-1 [@media(max-height:430px)]:text-[9px]">
           A Lu é uma inteligência artificial e pode errar. Confira sempre o rótulo dos produtos e,
           para dúvidas de saúde, procure seu médico ou nutricionista.
         </p>
