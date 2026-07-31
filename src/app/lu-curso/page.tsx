@@ -151,13 +151,28 @@ export default function LuCursoPage() {
   const primeiraPergunta = msgs.length === 1;
 
   return (
-    // `fixed inset-0` e NÃO `h-dvh`: dentro do iframe do app da Hotmart (WebView
-    // iOS), `dvh` devolve a altura da JANELA DO APP, não a do iframe. A página
-    // nascia com ~800px dentro de um quadro de ~250px e o rodapé — o campo de
-    // digitar — ficava fora da área visível, sem rolagem que o alcançasse.
-    // `fixed` se ancora ao viewport do próprio iframe, qualquer que seja a altura
-    // que a Hotmart imponha. (Achado do dono no celular, 31/07.)
-    <main className="fixed inset-0 flex flex-col bg-surface-container-low font-body">
+    <>
+      {/*
+        ALTURA DENTRO DO IFRAME — duas tentativas queimadas antes desta:
+          1. `h-dvh`  → no WebView do iOS, dvh devolve a altura da JANELA DO APP,
+                        não a do iframe: a página nascia com ~800px num quadro de
+                        ~250px e o campo de digitar já nascia fora.
+          2. `fixed inset-0` → position:fixed dentro de iframe é quebrado no
+                        WebKit do iOS: ancora na janela, não no quadro. Mesmo fim.
+        O que funciona é altura PERCENTUAL encadeada — html → body → main. Cada
+        elo precisa de 100%, senão a corrente arrebenta e o main volta a crescer
+        com o conteúdo, empurrando o rodapé para fora.
+        `overflow:hidden` no body garante que só a lista de mensagens role: se a
+        página inteira rolar, o campo de digitar sai de vista de novo.
+      */}
+      <style>{`
+        html,body{height:100%;margin:0;overflow:hidden}
+        /* o layout raiz põe min-h-screen (100vh) no body — e 100vh dentro de
+           iframe no iOS é a altura da JANELA. Sem zerar isto, o body volta a ser
+           mais alto que o quadro e o rodapé sai de vista de novo. */
+        body{min-height:0}
+      `}</style>
+      <main className="flex h-full flex-col overflow-hidden bg-surface-container-low font-body">
       {/* cabeçalho */}
       <header className="flex items-center gap-2 bg-primary px-3 py-2 text-on-primary shadow-sm">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-sm">
@@ -268,5 +283,6 @@ export default function LuCursoPage() {
         </p>
       </div>
     </main>
+    </>
   );
 }
