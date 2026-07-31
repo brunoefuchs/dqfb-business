@@ -187,7 +187,16 @@ export default function LuCursoPage() {
       </header>
 
       {/* conversa */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
+      {/*
+        `min-h-0` NÃO é decoração: item flex nasce com min-height:auto, então este
+        div cresceria com o conteúdo em vez de encolher ao espaço livre — e aí
+        `overflow-y-auto` não tem o que rolar (o elemento nunca fica menor que o
+        conteúdo). Era por isso que dava para ir ao fim (o scroll automático das
+        mensagens novas empurrava) mas não para voltar ao começo.
+        `overscroll-contain` impede que o gesto, ao chegar no topo, vaze para a
+        página da aula por baixo do iframe.
+      */}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3">
         <div className="mx-auto flex max-w-2xl flex-col gap-2">
           {msgs.map((m, i) => (
             <div
