@@ -148,29 +148,29 @@ export default function LuCursoPage() {
   return (
     <main className="flex h-dvh flex-col bg-surface-container-low font-body">
       {/* cabeçalho */}
-      <header className="flex items-center gap-3 bg-primary px-4 py-3 text-on-primary shadow-sm">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-lg">
+      <header className="flex items-center gap-2 bg-primary px-3 py-2 text-on-primary shadow-sm">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-fixed text-sm">
           💛
         </div>
         <div className="min-w-0">
-          <p className="font-display text-base leading-tight font-semibold">Lu</p>
-          <p className="truncate text-xs opacity-80">a IA do Doce que Faz Bem</p>
+          <p className="font-display text-[13px] leading-tight font-semibold">Lu</p>
+          <p className="truncate text-[10px] opacity-80">a IA do Doce que Faz Bem</p>
         </div>
       </header>
 
       {/* conversa */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
-        <div className="mx-auto flex max-w-2xl flex-col gap-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
+        <div className="mx-auto flex max-w-2xl flex-col gap-2">
           {msgs.map((m, i) => (
             <div
               key={i}
               className={
                 m.autor === 'aluna'
-                  ? 'max-w-[85%] self-end rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-on-primary'
-                  : 'max-w-[92%] self-start rounded-2xl rounded-bl-sm bg-surface-container-lowest px-4 py-2.5 text-on-surface shadow-sm'
+                  ? 'max-w-[85%] self-end rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-on-primary'
+                  : 'max-w-[92%] self-start rounded-2xl rounded-bl-sm bg-surface-container-lowest px-3 py-2 text-on-surface shadow-sm'
               }
             >
-              <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+              <p className="text-[13px] leading-[1.55] whitespace-pre-wrap">
                 <Texto>{m.texto}</Texto>
               </p>
             </div>
@@ -198,7 +198,7 @@ export default function LuCursoPage() {
                   key={s}
                   type="button"
                   onClick={() => enviar(s)}
-                  className="rounded-full border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-[13px] text-on-surface-variant transition hover:bg-surface-container"
+                  className="rounded-full border border-outline-variant bg-surface-container-lowest px-2.5 py-1 text-[11px] text-on-surface-variant transition hover:bg-surface-container"
                 >
                   {s}
                 </button>
@@ -211,7 +211,7 @@ export default function LuCursoPage() {
       </div>
 
       {/* composer */}
-      <div className="border-t border-outline-variant bg-surface-container-lowest px-4 py-3">
+      <div className="border-t border-outline-variant bg-surface-container-lowest px-3 py-2">
         <form
           className="mx-auto flex max-w-2xl items-end gap-2"
           onSubmit={(e) => {
@@ -234,19 +234,19 @@ export default function LuCursoPage() {
             maxLength={1000}
             placeholder="Escreva sua dúvida..."
             aria-label="Sua dúvida para a Lu"
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border border-outline-variant bg-surface px-4 py-2.5 text-[15px] text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:border-primary"
+            className="max-h-28 min-h-[38px] flex-1 resize-none rounded-2xl border border-outline-variant bg-surface px-3 py-2 text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:border-primary"
           />
           <button
             type="submit"
             disabled={carregando || !texto.trim()}
             aria-label="Enviar"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition disabled:opacity-40"
           >
-            <span className="material-symbols-outlined text-[20px]">send</span>
+            <span className="material-symbols-outlined text-[17px]">send</span>
           </button>
         </form>
         {/* Disclosure de IA — exigência do parecer jurídico (EPIC-10, aprovado 30/06). */}
-        <p className="mx-auto mt-2 max-w-2xl text-center text-[11px] leading-snug text-on-surface-variant/70">
+        <p className="mx-auto mt-1.5 max-w-2xl text-center text-[10px] leading-snug text-on-surface-variant/70">
           A Lu é uma inteligência artificial e pode errar. Confira sempre o rótulo dos produtos e,
           para dúvidas de saúde, procure seu médico ou nutricionista.
         </p>

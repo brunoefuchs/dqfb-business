@@ -159,10 +159,13 @@ interface LuCursoRow {
   sessao_id: string | null;
   pergunta: string;
   resposta: string;
+  resposta_barrada: string | null;
   rota: 'verbatim' | 'gerada' | 'abstencao';
   motivo: string | null;
   fonte_topo: string | null;
+  fonte_id: string | null;
   score_topo: number | null;
+  revisada_em: string | null;
   created_at: string;
 }
 interface LuCursoResp {
@@ -304,8 +307,8 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   // Lu do CURSO (iframe Hotmart) — 🔴 aba SEPARADA da Lu do app por decisão do dono
   // (30/07). Estado próprio, endpoint próprio: nada aqui cruza com a fila da Lu do app.
   const [luCurso, setLuCurso] = useState<LuCursoResp | null>(null);
-  const [luCursoStatus, setLuCursoStatus] = useState<'tudo' | 'abstencao'>('tudo');
-  const loadLuCurso = useCallback(async (st?: 'tudo' | 'abstencao') => {
+  const [luCursoStatus, setLuCursoStatus] = useState<'pendente' | 'abstencao' | 'tudo'>('pendente');
+  const loadLuCurso = useCallback(async (st?: 'pendente' | 'abstencao' | 'tudo') => {
     setErro('');
     setCarregando(true);
     try {
@@ -363,6 +366,34 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
     else if (tab === 'lu-proposta') void loadLuProp();
     else if (tab === 'lu-curso') void loadLuCurso();
     else void loadAvaliador();
+  };
+
+  // Lu do CURSO — curar SEM tocar no acervo do app. A edge decide o destino pela
+  // origem da conversa (override quando a resposta veio do app); o front só manda
+  // a intenção e o texto. Ver acaoLuCurso em admin-painel/index.ts.
+  const acaoLuCurso = async (
+    action: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
+    id: string,
+    resposta?: string,
+    pergunta?: string,
+  ): Promise<boolean> => {
+    setErro('');
+    try {
+      const r = (await api('', {
+        method: 'POST',
+        body: JSON.stringify({ action, id, resposta, pergunta }),
+      })) as { sem_embedding?: boolean };
+      // Sem embedding a entrada existe mas não é encontrável pela busca — avisar em
+      // vez de deixar o dono achar que resolveu.
+      if (r?.sem_embedding) {
+        setErro('Salvo, mas SEM embedding (a chave da OpenAI falhou). A Lu ainda não vai encontrar essa resposta — me avise para reindexar.');
+      }
+      await loadLuCurso();
+      return true;
+    } catch (e) {
+      setErro(String(e));
+      return false;
+    }
   };
 
   // Lu — Curadoria proponente (Story 16.2): botão "Minerar" + 3 ações na fila.
@@ -663,6 +694,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
               setLuCursoStatus(st);
               void loadLuCurso(st);
             }}
+            onAcao={acaoLuCurso}
           />
         ) : null}
       </div>
@@ -2104,20 +2136,29 @@ export default function Page() {
 
 // ─── Lu · Curso ───────────────────────────────────────────────────────────────
 // 🔴 REGRA MASTER (dono, 30/07): aba SEPARADA da Lu do app, de ponta a ponta.
-// O que ela existe para responder, em ordem de importância:
-//   1. o que a Lu NÃO soube responder (abstenção = buraco do acervo)
-//   2. quanto o curso está gastando contra o teto próprio de US$1,50/dia
+// O que ela responde, em ordem de importância:
+//   1. o que a Lu NÃO soube (abstenção = buraco do acervo)
+//   2. quanto o curso gastou contra o teto próprio de US$1,50/dia
 //   3. o histórico, para o dono ler as alunas com as próprias palavras
-// Somente leitura: curar daqui viraria um segundo fluxo de curadoria concorrendo
-// com o do app. A ação sobre um buraco é acrescentar FAQ ao acervo do curso.
+//
+// CURAR AQUI NUNCA ESCREVE NO ACERVO DO APP. Quando a resposta errada veio do
+// acervo do app, a correção nasce como versão-curso e a busca DO CURSO passa a
+// ignorar a original — no aplicativo, nada muda. Ver acaoLuCurso na edge.
 function LuCursoView({
   d,
   status,
   onStatus,
+  onAcao,
 }: {
   d: LuCursoResp;
-  status: 'tudo' | 'abstencao';
-  onStatus: (st: 'tudo' | 'abstencao') => void;
+  status: 'pendente' | 'abstencao' | 'tudo';
+  onStatus: (st: 'pendente' | 'abstencao' | 'tudo') => void;
+  onAcao: (
+    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
+    id: string,
+    resposta?: string,
+    pergunta?: string,
+  ) => Promise<boolean>;
 }) {
   const r = d.resumo;
   const pct = (r.taxa_abstencao_7d * 100).toFixed(1);
@@ -2127,11 +2168,14 @@ function LuCursoView({
   return (
     <>
       <div className="pdqfb-tabs" style={{ margin: '0 0 14px', borderBottom: 'none' }}>
-        <button className={status === 'tudo' ? 'on' : ''} onClick={() => onStatus('tudo')}>
-          Tudo
+        <button className={status === 'pendente' ? 'on' : ''} onClick={() => onStatus('pendente')}>
+          A revisar
         </button>
         <button className={status === 'abstencao' ? 'on' : ''} onClick={() => onStatus('abstencao')}>
           Só o que ela não soube
+        </button>
+        <button className={status === 'tudo' ? 'on' : ''} onClick={() => onStatus('tudo')}>
+          Tudo
         </button>
       </div>
 
@@ -2169,18 +2213,20 @@ function LuCursoView({
       <div className="pdqfb-filahead">
         {d.rows.length} conversa(s) ·{' '}
         {status === 'abstencao'
-          ? 'cada uma aqui é uma FAQ que falta no acervo do curso'
+          ? 'cada uma aqui é uma resposta que falta no acervo do curso'
           : '📗 acervo do curso · 📘 acervo do app · ⚠️ não soube'}
       </div>
 
       {d.rows.length === 0 ? (
         <div className="pdqfb-loading">
-          {status === 'abstencao'
-            ? 'Nenhuma abstenção no período. 💛'
-            : 'Nenhuma conversa ainda — a Lu do Curso ainda não foi usada.'}
+          {status === 'pendente'
+            ? 'Nada a revisar — tudo em dia por aqui. 💛'
+            : status === 'abstencao'
+              ? 'Nenhuma abstenção no período. 💛'
+              : 'Nenhuma conversa ainda — a Lu do Curso ainda não foi usada.'}
         </div>
       ) : (
-        d.rows.map((c) => <LuCursoCard key={c.id} c={c} />)
+        d.rows.map((c) => <LuCursoCard key={c.id} c={c} onAcao={onAcao} />)
       )}
     </>
   );
@@ -2197,9 +2243,28 @@ const LU_CURSO_MOTIVO: Record<string, string> = {
   teto: 'teto de custo do dia',
 };
 
-function LuCursoCard({ c }: { c: LuCursoRow }) {
+function LuCursoCard({
+  c,
+  onAcao,
+}: {
+  c: LuCursoRow;
+  onAcao: (
+    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
+    id: string,
+    resposta?: string,
+    pergunta?: string,
+  ) => Promise<boolean>;
+}) {
   const abst = c.rota === 'abstencao';
-  const selo = abst ? '⚠️' : c.fonte_topo === 'app' ? '📘' : '📗';
+  const doApp = c.fonte_topo === 'app';
+  const [editando, setEditando] = useState(false);
+  // Corrigir começa do texto que saiu — quase sempre o conserto é um ajuste, não
+  // uma reescrita. Ensinar começa vazio: não havia resposta nenhuma.
+  const [texto, setTexto] = useState(abst ? '' : c.resposta);
+  const [chave, setChave] = useState(c.pergunta);
+  const [salvando, setSalvando] = useState(false);
+
+  const selo = abst ? '⚠️' : doApp ? '📘' : '📗';
   const quando = new Date(c.created_at).toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo', // dia BR, nunca UTC — regra da casa
     day: '2-digit',
@@ -2207,25 +2272,117 @@ function LuCursoCard({ c }: { c: LuCursoRow }) {
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  const salvar = async () => {
+    if (!texto.trim()) return;
+    setSalvando(true);
+    const ok = await onAcao(
+      abst ? 'lu_curso_ensinar' : 'lu_curso_corrigir',
+      c.id,
+      texto.trim(),
+      chave.trim(),
+    );
+    setSalvando(false);
+    if (ok) setEditando(false);
+  };
+
   return (
-    <div className="pdqfb-rcard" style={abst ? { borderLeft: '3px solid #b3261e' } : undefined}>
+    <div
+      className="pdqfb-rcard"
+      style={{
+        borderLeft: abst ? '3px solid #b3261e' : undefined,
+        opacity: c.revisada_em ? 0.72 : 1,
+      }}
+    >
       <div className="pdqfb-row" style={{ justifyContent: 'space-between', gap: 8 }}>
         <strong style={{ flex: 1 }}>
           {selo} {c.pergunta}
         </strong>
-        <span style={{ fontSize: 12, opacity: 0.6, whiteSpace: 'nowrap' }}>{quando}</span>
+        <span style={{ fontSize: 12, opacity: 0.6, whiteSpace: 'nowrap' }}>
+          {c.revisada_em ? '✓ ' : ''}
+          {quando}
+        </span>
       </div>
+
       <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', opacity: abst ? 0.75 : 1 }}>
         {c.resposta}
       </p>
+
+      {/* O que o guard barrou: a aluna não viu, mas é o que explica a abstenção. */}
+      {c.resposta_barrada ? (
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.7 }}>
+            ver o texto que o guard barrou
+          </summary>
+          <p
+            style={{
+              margin: '6px 0 0',
+              whiteSpace: 'pre-wrap',
+              fontSize: 13,
+              opacity: 0.8,
+              borderLeft: '2px solid #ddd',
+              paddingLeft: 8,
+            }}
+          >
+            {c.resposta_barrada}
+          </p>
+        </details>
+      ) : null}
+
       <div className="pdqfb-note" style={{ marginTop: 8 }}>
         {abst
-          ? `não respondeu — ${LU_CURSO_MOTIVO[c.motivo ?? ''] ?? c.motivo ?? 'motivo não registrado'}`
+          ? `não respondeu — ${LU_CURSO_MOTIVO[(c.motivo ?? '').split(':')[0]] ?? c.motivo ?? 'motivo não registrado'}`
           : c.rota === 'verbatim'
-            ? `resposta curada, entregue como está (${c.fonte_topo === 'app' ? 'acervo do app' : 'acervo do curso'})`
-            : `gerada e aprovada pelo guard (${c.fonte_topo === 'app' ? 'acervo do app' : 'acervo do curso'})`}
+            ? `resposta curada, entregue como está (${doApp ? 'acervo do app' : 'acervo do curso'})`
+            : `gerada e aprovada pelo guard (${doApp ? 'acervo do app' : 'acervo do curso'})`}
         {c.score_topo != null ? ` · proximidade ${c.score_topo.toFixed(2)}` : ''}
       </div>
+
+      {editando ? (
+        <div style={{ marginTop: 10 }}>
+          <label style={{ fontSize: 12, opacity: 0.7 }}>
+            Pergunta que a Lu vai reconhecer (a redação da aluna costuma ser a melhor)
+          </label>
+          <input
+            value={chave}
+            onChange={(e) => setChave(e.target.value)}
+            style={{ width: '100%', padding: 8, marginTop: 4, fontSize: 14 }}
+          />
+          <label style={{ fontSize: 12, opacity: 0.7, display: 'block', marginTop: 8 }}>
+            Resposta que a aluna do CURSO deve receber
+          </label>
+          <textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            rows={7}
+            style={{ width: '100%', padding: 8, marginTop: 4, fontSize: 14 }}
+          />
+          <p className="pdqfb-note" style={{ marginTop: 6 }}>
+            {doApp && !abst
+              ? '📘 Esta resposta veio do acervo do APP. Salvar cria uma versão-curso: a Lu do curso passa a usar a sua, e a Lu do app continua com a original, intacta.'
+              : abst
+                ? '⚠️ Vira resposta nova no acervo do CURSO. Só o curso passa a saber respondê-la.'
+                : '📗 Edita a entrada do acervo do CURSO. O app não é afetado.'}
+          </p>
+          <div className="pdqfb-row" style={{ gap: 8, marginTop: 8 }}>
+            <button onClick={salvar} disabled={salvando || !texto.trim()}>
+              {salvando ? 'Salvando…' : '💾 Salvar para o curso'}
+            </button>
+            <button onClick={() => setEditando(false)} disabled={salvando}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="pdqfb-row" style={{ gap: 8, marginTop: 10 }}>
+          <button onClick={() => setEditando(true)}>
+            {abst ? '➕ Ensinar a resposta' : doApp ? '✏️ Corrigir para o curso' : '✏️ Corrigir'}
+          </button>
+          {!c.revisada_em ? (
+            <button onClick={() => onAcao('lu_curso_ok', c.id)}>✅ Está boa</button>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
