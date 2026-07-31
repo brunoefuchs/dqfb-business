@@ -123,11 +123,19 @@ export default function LuCursoPage() {
   const [msgs, setMsgs] = useState<Msg[]>([{ autor: 'lu', texto: SAUDACAO }]);
   const [texto, setTexto] = useState('');
   const [carregando, setCarregando] = useState(false);
-  const fimRef = useRef<HTMLDivElement>(null);
+  const listaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // NUNCA usar scrollIntoView aqui. Dentro de um iframe ele rola TODOS os
+  // ancestrais roláveis — inclusive a página da aula na Hotmart. O chat se
+  // auto-rolava ao abrir e arrastava a aula junto, empurrando o topo do iframe
+  // para fora da tela: era o "corta em cima" e a sensação de travamento.
+  // Mexer no scrollTop do próprio container rola só ele. (Achado 31/07.)
   useEffect(() => {
-    fimRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    // A 1ª renderização não rola: a aluna precisa ver a saudação, não o rodapé.
+    if (msgs.length <= 1) return;
+    const el = listaRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [msgs, carregando]);
 
   const enviar = useCallback(
@@ -205,7 +213,10 @@ export default function LuCursoPage() {
         bloqueava justamente esse gesto e travava nas duas pontas — a aluna não
         chegava nem ao começo da conversa nem ao campo de digitar.
       */}
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
+      <div
+        ref={listaRef}
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3"
+      >
         <div className="mx-auto flex max-w-2xl flex-col gap-2">
           {msgs.map((m, i) => (
             <div
@@ -236,7 +247,6 @@ export default function LuCursoPage() {
             </div>
           )}
 
-          <div ref={fimRef} />
         </div>
       </div>
 
