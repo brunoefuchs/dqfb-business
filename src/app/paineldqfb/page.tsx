@@ -372,7 +372,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   // origem da conversa (override quando a resposta veio do app); o front só manda
   // a intenção e o texto. Ver acaoLuCurso em admin-painel/index.ts.
   const acaoLuCurso = async (
-    action: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
+    action: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok' | 'lu_curso_ao_app',
     id: string,
     resposta?: string,
     pergunta?: string,
@@ -2166,7 +2166,7 @@ function LuCursoView({
   status: 'pendente' | 'abstencao' | 'revisadas' | 'tudo';
   onStatus: (st: 'pendente' | 'abstencao' | 'revisadas' | 'tudo') => void;
   onAcao: (
-    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
+    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok' | 'lu_curso_ao_app',
     id: string,
     resposta?: string,
     pergunta?: string,
@@ -2266,7 +2266,7 @@ function LuCursoCard({
 }: {
   c: LuCursoRow;
   onAcao: (
-    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
+    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok' | 'lu_curso_ao_app',
     id: string,
     resposta?: string,
     pergunta?: string,
@@ -2280,6 +2280,9 @@ function LuCursoCard({
   const [texto, setTexto] = useState(abst ? '' : c.resposta);
   const [chave, setChave] = useState(c.pergunta);
   const [salvando, setSalvando] = useState(false);
+  // "levar ao app" é outro destino, não outro botão de salvar: por isso o modo
+  // é próprio e a confirmação é explícita.
+  const [aoApp, setAoApp] = useState(false);
 
   const selo = abst ? '⚠️' : doApp ? '📘' : '📗';
   const acervo = doApp ? 'acervo do app' : 'acervo do curso';
@@ -2295,13 +2298,16 @@ function LuCursoCard({
     if (!texto.trim()) return;
     setSalvando(true);
     const ok = await onAcao(
-      abst ? 'lu_curso_ensinar' : 'lu_curso_corrigir',
+      aoApp ? 'lu_curso_ao_app' : abst ? 'lu_curso_ensinar' : 'lu_curso_corrigir',
       c.id,
       texto.trim(),
       chave.trim(),
     );
     setSalvando(false);
-    if (ok) setEditando(false);
+    if (ok) {
+      setEditando(false);
+      setAoApp(false);
+    }
   };
 
   return (
@@ -2358,18 +2364,28 @@ function LuCursoCard({
               style={{ minHeight: 320, lineHeight: 1.55 }}
             />
           </div>
-          <div className="lu-tent-motivo">
-            {doApp && !abst
-              ? '📘 Esta resposta veio do acervo do APP. Salvar cria uma versão-curso: a Lu do curso passa a usar a sua, e a Lu do app continua com a original, intacta.'
-              : abst
-                ? '⚠️ Vira resposta nova no acervo do CURSO. Só o curso passa a saber respondê-la.'
-                : '📗 Edita a entrada do acervo do CURSO. O app não é afetado.'}
+          <div className="lu-tent-motivo" style={aoApp ? { background: '#FFF4E5', borderColor: '#E8C48A' } : undefined}>
+            {aoApp
+              ? '📲 VAI PARA O APP TAMBÉM — como PROPOSTA pendente, não como verdade. A aluna do app NÃO recebe nada até você aprovar em "Lu · Propostas". O curso não é alterado por este botão.'
+              : doApp && !abst
+                ? '📘 Esta resposta veio do acervo do APP. Salvar cria uma versão-curso: a Lu do curso passa a usar a sua, e a Lu do app continua com a original, intacta.'
+                : abst
+                  ? '⚠️ Vira resposta nova no acervo do CURSO. Só o curso passa a saber respondê-la.'
+                  : '📗 Edita a entrada do acervo do CURSO. O app não é afetado.'}
           </div>
           <div className="racoes">
             <button className="b pink" onClick={salvar} disabled={salvando || !texto.trim()}>
-              {salvando ? 'Salvando…' : 'Salvar para o curso'}
+              {salvando ? 'Salvando…' : aoApp ? 'Enviar como proposta ao app' : 'Salvar para o curso'}
             </button>
-            <button className="b" onClick={() => setEditando(false)} disabled={salvando}>
+            <button
+              className="b"
+              onClick={() => setAoApp((v) => !v)}
+              disabled={salvando}
+              title="Quando a correção vale para as duas Lus, não só para o curso"
+            >
+              {aoApp ? '↩︎ Voltar a salvar só no curso' : '📲 Levar ao app também'}
+            </button>
+            <button className="b" onClick={() => { setEditando(false); setAoApp(false); }} disabled={salvando}>
               Cancelar
             </button>
           </div>
