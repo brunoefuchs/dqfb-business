@@ -182,7 +182,17 @@ interface LuCursoResp {
 
 interface LuResp {
   itens: LuItem[];
-  pendentes: number;
+  pendentes: number; // total REAL da janela (não o tamanho da página)
+  pagina: number;
+  por_pagina: number;
+  tem_proxima: boolean;
+  resumo: {
+    total_7d: number;
+    abstencoes_7d: number;
+    taxa_abstencao_7d: number;
+    usd_dia: number;
+    usd_mes: number;
+  };
 }
 
 // Lu — Curadoria PROPONENTE (Story 16.2). Payload da ?fila=lu-proposta.
@@ -321,11 +331,11 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   }, [api, luCursoStatus]);
 
   const [luStatus, setLuStatus] = useState<'pendente' | 'revisadas'>('pendente');
-  const loadLu = useCallback(async (st?: 'pendente' | 'revisadas') => {
+  const loadLu = useCallback(async (st?: 'pendente' | 'revisadas', pagina = 0) => {
     setErro('');
     setCarregando(true);
     try {
-      setLu((await api('?fila=lu&status=' + (st ?? luStatus))) as LuResp);
+      setLu((await api(`?fila=lu&status=${st ?? luStatus}&pagina=${pagina}`)) as LuResp);
     } catch (e) {
       setErro(String(e));
     } finally {
@@ -681,6 +691,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
             onSimples={acaoLuSimples}
             onCorrigir={corrigirLu}
             onReabrir={reabrirLu}
+            onPagina={(p) => void loadLu(luStatus, p)}
           />
         ) : null}
         {!carregando && tab === 'lu-proposta' && luProp ? (
@@ -1515,6 +1526,7 @@ function LuView({
   onSimples,
   onCorrigir,
   onReabrir,
+  onPagina,
 }: {
   d: LuResp;
   status: 'pendente' | 'revisadas';
@@ -1522,6 +1534,7 @@ function LuView({
   onSimples: (a: 'lu_confiar' | 'lu_ignorar' | 'lu_exemplo', id: string) => Promise<void>;
   onCorrigir: (id: string, resposta: string) => Promise<boolean>;
   onReabrir: (id: string) => void;
+  onPagina?: (p: number) => void;
 }) {
   const filtro = (
     <div className="pdqfb-tabs" style={{ margin: '0 0 14px', borderBottom: 'none' }}>
@@ -1549,8 +1562,10 @@ function LuView({
       {filtro}
       <div className="pdqfb-kpis">
         <div className="pdqfb-kpi dark">
+          {/* total REAL da janela. Antes mostrava itens.length — sempre o teto da página — e com
+              304 pendentes o painel dizia "200" sem caminho para as outras 104. */}
           <div className="lbl">{status === 'pendente' ? 'Respostas pendentes' : 'Já avaliadas'}</div>
-          <div className="val">{d.itens.length}</div>
+          <div className="val">{d.pendentes}</div>
         </div>
         <div className="pdqfb-kpi">
           <div className="lbl">👎 da aluna (olhar primeiro)</div>
@@ -1565,12 +1580,56 @@ function LuView({
           <div className="val">{d.itens.filter((x) => x.thumbs == null).length}</div>
         </div>
       </div>
+
+      {/* Saúde da Lu do APP em 7 dias — os mesmos números da aba do Curso. O que importa não é o
+          volume: é a TAXA DE ABSTENÇÃO, porque cada pergunta que ela não soube responder é um
+          buraco do acervo esperando virar FAQ. */}
+      {d.resumo ? (
+        <div className="pdqfb-kpis" style={{ marginTop: 12 }}>
+          <div className="pdqfb-kpi">
+            <div className="lbl">Perguntas (7 dias)</div>
+            <div className="val">{d.resumo.total_7d}</div>
+          </div>
+          <div className="pdqfb-kpi">
+            <div className="lbl">Não soube responder</div>
+            <div className="val">
+              {d.resumo.abstencoes_7d}{' '}
+              <span style={{ fontSize: '0.6em', opacity: 0.7 }}>
+                ({(d.resumo.taxa_abstencao_7d * 100).toFixed(1)}%)
+              </span>
+            </div>
+          </div>
+          <div className="pdqfb-kpi">
+            <div className="lbl">Gasto hoje</div>
+            <div className="val">US$ {d.resumo.usd_dia.toFixed(2)}</div>
+          </div>
+          <div className="pdqfb-kpi">
+            <div className="lbl">Gasto no mês</div>
+            <div className="val">US$ {d.resumo.usd_mes.toFixed(2)}</div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="pdqfb-filahead">
-        {d.pendentes} resposta(s) · 👎 aparecem primeiro · ✅ confiar · ✏️ corrigir (ensina a Lu) · 🗄️ ignorar · ⭐ exemplo
+        {d.pendentes} resposta(s)
+        {d.pendentes > d.itens.length
+          ? ` · mostrando ${d.pagina * d.por_pagina + 1}–${d.pagina * d.por_pagina + d.itens.length}`
+          : ''}{' '}
+        · 👎 aparecem primeiro · ✅ confiar · ✏️ corrigir (ensina a Lu) · 🗄️ ignorar · ⭐ exemplo
       </div>
       {d.itens.map((it) => (
         <LuCard key={it.id} it={it} onSimples={onSimples} onCorrigir={onCorrigir} onReabrir={onReabrir} />
       ))}
+      {(d.pagina > 0 || d.tem_proxima) && onPagina ? (
+        <div className="pdqfb-tabs" style={{ justifyContent: 'center', margin: '18px 0 0', borderBottom: 'none' }}>
+          <button disabled={d.pagina === 0} onClick={() => onPagina(d.pagina - 1)}>
+            ← anteriores
+          </button>
+          <button disabled={!d.tem_proxima} onClick={() => onPagina(d.pagina + 1)}>
+            próximas {d.por_pagina} →
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }
