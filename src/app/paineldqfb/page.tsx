@@ -2395,6 +2395,23 @@ function LuCursoCard({
           <button className="b pink" onClick={() => setEditando(true)}>
             {abst ? 'Ensinar a resposta' : doApp ? 'Corrigir para o curso' : 'Corrigir'}
           </button>
+          {/* Sem isto, levar ao app exigia entrar em "Corrigir" — e quem quer
+              propor uma resposta que já está BOA não tem nada a corrigir. Abre a
+              tela já no modo ao-app: o dono confere o texto exato antes de enviar,
+              porque este é o único botão cuja consequência sai do curso. */}
+          {!abst ? (
+            <button
+              className="b"
+              onClick={() => {
+                setTexto(c.resposta);
+                setAoApp(true);
+                setEditando(true);
+              }}
+              title="Propor esta resposta também para a Lu do app (entra como pendente)"
+            >
+              📲 Levar ao app
+            </button>
+          ) : null}
           {!c.revisada_em ? (
             <button className="b ok" onClick={() => onAcao('lu_curso_ok', c.id)}>
               Está boa
