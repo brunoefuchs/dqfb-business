@@ -1379,9 +1379,9 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
   return (
     <div className="pdqfb-acard">
       <div className="ahead">
+        {/* 🚩, não ⭐: no MESMO card o ⭐ é o botão "Exemplo" (a Fran promovendo a
+            resposta). Dois significados opostos com o mesmo símbolo, lado a lado. */}
         {it.marcada_aluna ? (
-          {/* 🚩, não ⭐: no MESMO card o ⭐ é o botão "Exemplo" (a Fran promovendo a
-              resposta). Dois significados opostos com o mesmo símbolo, lado a lado. */}
           <span className="star" title={`${it.n_marcacoes} reporte(s) de aluna`}>🚩</span>
         ) : null}
         <span className="prod">{it.produto}</span>
