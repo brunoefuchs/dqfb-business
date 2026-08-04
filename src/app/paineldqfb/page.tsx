@@ -1464,10 +1464,11 @@ function AvaliadorView(
           resultado ficou pior: "Já curados" e "Pendentes" passaram a repetir dois deles,
           enquanto "arquivados" seguia sem card. Agora cada estado tem o mesmo peso
           visual, e os três somam o total à vista.
-          "Marcados por aluna" desceu para a linha de baixo: é métrica de ORIGEM (quem
-          apontou), não de estado de curadoria — misturada aqui, competia com a leitura
-          que a Fran faz todo dia. */}
-      <div className="pdqfb-kpis">
+          "Marcados por aluna" fica no fim da MESMA linha. A tentativa de descê-lo para
+          uma segunda linha deixou um card sozinho ocupando um quarto da largura — órfão,
+          pior que a duplicação que eu tinha ido corrigir. O grid virou auto-fit: os cinco
+          cabem lado a lado e quebram sozinhos em tela estreita. */}
+      <div className="pdqfb-kpis pdqfb-kpis-5">
         <div className="pdqfb-kpi dark">
           <div className="lbl">Produtos avaliados</div>
           <div className="val">{d.total}</div>
@@ -1484,8 +1485,6 @@ function AvaliadorView(
           <div className="lbl">Arquivados</div>
           <div className="val">{d.abas?.arquivado ?? d.arquivados ?? 0}</div>
         </div>
-      </div>
-      <div className="pdqfb-kpis pdqfb-kpis-sec">
         <div className="pdqfb-kpi">
           <div className="lbl">⭐ Marcados por aluna</div>
           <div className="val">{d.marcadas}</div>
@@ -2030,8 +2029,7 @@ const CSS = `
 .pdqfb-kpi .val{font-family:var(--font-fraunces),Georgia,serif;font-weight:600;font-size:34px;line-height:1;margin-top:8px;}
 .pdqfb-kpi.dark .val{color:#fff;}
 .pdqfb-kpi .val small{font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.1em;margin-left:3px;}
-.pdqfb-kpis.pdqfb-kpis-sec{grid-template-columns:repeat(4,1fr);margin-top:-14px;}
-@media(max-width:760px){.pdqfb-kpis.pdqfb-kpis-sec{grid-template-columns:repeat(2,1fr);}}
+.pdqfb-kpis.pdqfb-kpis-5{grid-template-columns:repeat(auto-fit,minmax(148px,1fr));}
 .pdqfb-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 @media(max-width:760px){.pdqfb-grid{grid-template-columns:1fr;}}
 .pdqfb-panel{background:var(--paper);border:1px solid var(--hairline);border-radius:16px;padding:20px;}
