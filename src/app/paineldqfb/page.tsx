@@ -102,6 +102,8 @@ interface AvaliadorItem {
   curado_porque: string | null;
   curado_em: string | null;
   usar_como_fewshot: boolean;
+  /** Texto CRU do rótulo (o que o OCR entregou ao motor). Null antes de 03/08. */
+  ocr_texto?: string | null;
   ultima: string;
 }
 // (Story 12.B2) Uma linha do card "%Confiar por semana" (aba Avaliador).
@@ -1394,6 +1396,21 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
         <span className="estado">{estadoCuradoria(it)}</span>
       </div>
       {it.ingredientes ? <div className="aingr">{it.ingredientes}</div> : null}
+      {/* (dono, 2026-08-04) Texto CRU do rótulo, atrás de uma seta FECHADA por padrão —
+          decisão dele, e certa: são centenas de caracteres de OCR sujo, que aberto por
+          default afogaria o card e empurraria os botões para fora da tela.
+          Existe porque os dois defeitos do vinho de 04/08 eram de LEITURA, não de
+          julgamento: o `top3` dizia "historica, durante 18 meses" e a opinião saía
+          coerente com esse lixo. Sem ver o texto, curar aquilo teria carimbado erro de
+          leitura como decisão nutricional — e, virando `Exemplo`, moldaria as respostas
+          seguintes. Fechado, custa zero; aberto, responde "o motor leu errado?" antes de
+          a Fran responder "o motor julgou errado?". */}
+      {it.ocr_texto ? (
+        <details className="aocr">
+          <summary>Ver o que o OCR leu</summary>
+          <pre>{it.ocr_texto}</pre>
+        </details>
+      ) : null}
       {jaCurado && it.curado_porque ? (
         <>
           <div className="aporque curado">
@@ -2073,6 +2090,10 @@ const CSS = `
 .pdqfb-kpi.dark .val{color:#fff;}
 .pdqfb-kpi .val small{font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.1em;margin-left:3px;}
 .pdqfb-kpis.pdqfb-kpis-5{grid-template-columns:repeat(auto-fit,minmax(148px,1fr));}
+.aocr{margin:8px 0 2px;}
+.aocr summary{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-3);cursor:pointer;list-style:revert;}
+.aocr summary:hover{color:var(--ink-2);}
+.aocr pre{margin:8px 0 0;padding:10px 12px;background:var(--cream-100,#faf6f3);border:1px solid var(--hairline);border-radius:10px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.55;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;}
 .pdqfb-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 @media(max-width:760px){.pdqfb-grid{grid-template-columns:1fr;}}
 .pdqfb-panel{background:var(--paper);border:1px solid var(--hairline);border-radius:16px;padding:20px;}
