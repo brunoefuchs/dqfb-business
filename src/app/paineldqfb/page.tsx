@@ -119,6 +119,14 @@ interface AvaliadorResp {
   curados: number;
   arquivados?: number; // aba própria — não poluem "Não curado".
   pendentes?: number; // reais (nem curado nem arquivado).
+  /**
+   * Contagem das TRÊS ABAS — particiona `total` por construção (todo produto é
+   * exatamente um dos três). Existe separado de `curados` porque aquele campo conta
+   * `status==='curado'` sem exigir `validado_por_nutri`, e a aba exige os dois: no dia
+   * em que divergirem, três números que não somam o total leem como painel quebrado.
+   * Opcional para o painel não quebrar contra uma edge mais antiga.
+   */
+  abas?: { nao_curado: number; curado: number; arquivado: number };
   confiar_semana?: ConfiarSemana[]; // (Story 12.B2) aditivo — métrica global do Avaliador.
 }
 
@@ -1455,6 +1463,20 @@ function AvaliadorView(
         <div className="pdqfb-kpi dark">
           <div className="lbl">Produtos avaliados</div>
           <div className="val">{d.total}</div>
+          {/* (dono, 2026-08-04) O total sozinho não dizia em que pé está a curadoria —
+              a Fran via 109 e precisava trocar de aba para saber o que ainda tinha
+              trabalho. As três abas viraram números aqui, na ordem em que aparecem. */}
+          <div className="kpi-breakdown">
+            <span>
+              <b>{d.abas?.nao_curado ?? d.pendentes ?? 0}</b> não curados
+            </span>
+            <span>
+              <b>{d.abas?.curado ?? d.curados ?? 0}</b> curados
+            </span>
+            <span>
+              <b>{d.abas?.arquivado ?? d.arquivados ?? 0}</b> arquivados
+            </span>
+          </div>
         </div>
         <div className="pdqfb-kpi">
           <div className="lbl">⭐ Marcados por aluna</div>
@@ -2008,6 +2030,8 @@ const CSS = `
 .pdqfb-kpi .val{font-family:var(--font-fraunces),Georgia,serif;font-weight:600;font-size:34px;line-height:1;margin-top:8px;}
 .pdqfb-kpi.dark .val{color:#fff;}
 .pdqfb-kpi .val small{font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.1em;margin-left:3px;}
+.pdqfb-kpi .kpi-breakdown{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.06em;color:var(--cream-200);opacity:0.85;}
+.pdqfb-kpi .kpi-breakdown b{font-family:var(--font-fraunces),Georgia,serif;font-size:13px;font-weight:600;color:#fff;margin-right:3px;}
 .pdqfb-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 @media(max-width:760px){.pdqfb-grid{grid-template-columns:1fr;}}
 .pdqfb-panel{background:var(--paper);border:1px solid var(--hairline);border-radius:16px;padding:20px;}
