@@ -265,6 +265,8 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta' | 'lu-curso'>('custo');
   const [custo, setCusto] = useState<Custo | null>(null);
   const [fila, setFila] = useState<FilaItem[] | null>(null);
+  /** Contadores da Mel — vêm da edge (count exato, não `itens.length`, que é limitado a 100). */
+  const [melKpis, setMelKpis] = useState<{ total: number; pendentes: number; revisadas: number } | null>(null);
   const [melStatus, setMelStatus] = useState<'pendente' | 'revisadas'>('pendente');
   const [avaliador, setAvaliador] = useState<AvaliadorResp | null>(null);
   const [lu, setLu] = useState<LuResp | null>(null);
@@ -298,8 +300,18 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
     setErro('');
     setCarregando(true);
     try {
-      const d = (await api('?fila=mel&status=' + (st ?? melStatus))) as { itens: FilaItem[] };
+      const d = (await api('?fila=mel&status=' + (st ?? melStatus))) as {
+        itens: FilaItem[];
+        total?: number;
+        pendentes?: number;
+        revisadas?: number;
+      };
       setFila(d.itens ?? []);
+      setMelKpis(
+        typeof d.total === 'number'
+          ? { total: d.total, pendentes: d.pendentes ?? 0, revisadas: d.revisadas ?? 0 }
+          : null,
+      );
     } catch (e) {
       setErro(String(e));
     } finally {
@@ -668,6 +680,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
         {!carregando && tab === 'revisar' && fila ? (
           <RevisarView
             itens={fila}
+            kpis={melKpis}
             status={melStatus}
             onStatus={(st) => {
               setMelStatus(st);
@@ -1092,11 +1105,14 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
 function RevisarView({
   itens,
   status,
+  kpis,
   onStatus,
   onAcao,
   onPromover,
 }: {
   itens: FilaItem[];
+  /** Contadores da edge. Null quando ela ainda não os manda (edge antiga) → cards somem. */
+  kpis: { total: number; pendentes: number; revisadas: number } | null;
   status: 'pendente' | 'revisadas';
   onStatus: (st: 'pendente' | 'revisadas') => void;
   onAcao: (id: string, a: 'revisar' | 'descartar') => void;
@@ -1113,10 +1129,30 @@ function RevisarView({
       </button>
     </div>
   );
+  // (dono, 2026-08-04) Mesmos cards do Avaliador. Ficam FORA do early-return da lista
+  // vazia de propósito: "nenhuma resposta pendente" sem número nenhum não distingue "a
+  // Mel está em dia depois de 200 revisões" de "a Mel nunca respondeu nada".
+  const cards = kpis ? (
+    <div className="pdqfb-kpis pdqfb-kpis-5">
+      <div className="pdqfb-kpi dark">
+        <div className="lbl">Total de respostas</div>
+        <div className="val">{kpis.total}</div>
+      </div>
+      <div className="pdqfb-kpi">
+        <div className="lbl">Pendentes</div>
+        <div className="val">{kpis.pendentes}</div>
+      </div>
+      <div className="pdqfb-kpi">
+        <div className="lbl">Revisadas</div>
+        <div className="val">{kpis.revisadas}</div>
+      </div>
+    </div>
+  ) : null;
   if (itens.length === 0) {
     return (
       <>
         {filtro}
+        {cards}
         <div className="pdqfb-loading">
           {revisadas ? 'Nada revisado ainda.' : 'Nenhuma resposta pendente. 🎉'}
         </div>
@@ -1126,6 +1162,7 @@ function RevisarView({
   return (
     <>
       {filtro}
+      {cards}
       <div className="pdqfb-filahead">
         {itens.length} resposta(s) {revisadas ? 'já revisada(s)' : 'pendente(s)'}
       </div>
@@ -1343,7 +1380,9 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
     <div className="pdqfb-acard">
       <div className="ahead">
         {it.marcada_aluna ? (
-          <span className="star" title={`${it.n_marcacoes} reporte(s) de aluna`}>⭐</span>
+          {/* 🚩, não ⭐: no MESMO card o ⭐ é o botão "Exemplo" (a Fran promovendo a
+              resposta). Dois significados opostos com o mesmo símbolo, lado a lado. */}
+          <span className="star" title={`${it.n_marcacoes} reporte(s) de aluna`}>🚩</span>
         ) : null}
         <span className="prod">{it.produto}</span>
         <span className={`vchip ${vereditoTom(vExibido)}`}>
@@ -1486,7 +1525,11 @@ function AvaliadorView(
           <div className="val">{d.abas?.arquivado ?? d.arquivados ?? 0}</div>
         </div>
         <div className="pdqfb-kpi">
-          <div className="lbl">⭐ Marcados por aluna</div>
+          {/* (dono, 2026-08-04) Era ⭐, o MESMO ícone de "Exemplo" — e os dois são
+              opostos: aqui a aluna diz que a resposta errou; lá a Fran promove a
+              resposta a referência da IA. A legenda do rodapé usava ⭐ nas duas pontas.
+              🚩 = alguém sinalizou um problema. */}
+          <div className="lbl">🚩 Reportados por aluna</div>
           <div className="val">{d.marcadas}</div>
         </div>
       </div>
@@ -1522,7 +1565,7 @@ function AvaliadorView(
         </div>
       ) : null}
       <div className="pdqfb-filahead">
-        {d.itens.length} produto(s) · ⭐ = aluna reportou · ✅ confiar · ✏️ corrigir · 🗄️ ignorar · ⭐ exemplo (guarda p/ treino futuro da IA)
+        {d.itens.length} produto(s) · 🚩 = aluna reportou · ✅ confiar · ✏️ corrigir · 🗄️ ignorar · ⭐ exemplo (guarda p/ treino futuro da IA)
       </div>
       {d.itens.length === 0 ? (
         <div className="pdqfb-loading">
