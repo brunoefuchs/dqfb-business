@@ -1459,36 +1459,36 @@ function AvaliadorView(
   return (
     <>
       {filtro}
+      {/* (dono, 2026-08-04) Um card por ABA, na mesma ordem das abas acima.
+          A primeira versão colocou os três números pequenos dentro do card escuro, e o
+          resultado ficou pior: "Já curados" e "Pendentes" passaram a repetir dois deles,
+          enquanto "arquivados" seguia sem card. Agora cada estado tem o mesmo peso
+          visual, e os três somam o total à vista.
+          "Marcados por aluna" desceu para a linha de baixo: é métrica de ORIGEM (quem
+          apontou), não de estado de curadoria — misturada aqui, competia com a leitura
+          que a Fran faz todo dia. */}
       <div className="pdqfb-kpis">
         <div className="pdqfb-kpi dark">
           <div className="lbl">Produtos avaliados</div>
           <div className="val">{d.total}</div>
-          {/* (dono, 2026-08-04) O total sozinho não dizia em que pé está a curadoria —
-              a Fran via 109 e precisava trocar de aba para saber o que ainda tinha
-              trabalho. As três abas viraram números aqui, na ordem em que aparecem. */}
-          <div className="kpi-breakdown">
-            <span>
-              <b>{d.abas?.nao_curado ?? d.pendentes ?? 0}</b> não curados
-            </span>
-            <span>
-              <b>{d.abas?.curado ?? d.curados ?? 0}</b> curados
-            </span>
-            <span>
-              <b>{d.abas?.arquivado ?? d.arquivados ?? 0}</b> arquivados
-            </span>
-          </div>
         </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Não curados</div>
+          <div className="val">{d.abas?.nao_curado ?? d.pendentes ?? 0}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Curados</div>
+          <div className="val">{d.abas?.curado ?? d.curados ?? 0}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Arquivados</div>
+          <div className="val">{d.abas?.arquivado ?? d.arquivados ?? 0}</div>
+        </div>
+      </div>
+      <div className="pdqfb-kpis pdqfb-kpis-sec">
         <div className="pdqfb-kpi">
           <div className="lbl">⭐ Marcados por aluna</div>
           <div className="val">{d.marcadas}</div>
-        </div>
-        <div className="pdqfb-kpi">
-          <div className="lbl">Já curados</div>
-          <div className="val">{d.curados}</div>
-        </div>
-        <div className="pdqfb-kpi">
-          <div className="lbl">Pendentes</div>
-          <div className="val">{d.pendentes ?? d.total - d.curados - (d.arquivados ?? 0)}</div>
         </div>
       </div>
       {/* (Story 12.B2 / AC-2) Card "%Confiar por semana" — de tudo que a Fran curou,
@@ -2030,8 +2030,8 @@ const CSS = `
 .pdqfb-kpi .val{font-family:var(--font-fraunces),Georgia,serif;font-weight:600;font-size:34px;line-height:1;margin-top:8px;}
 .pdqfb-kpi.dark .val{color:#fff;}
 .pdqfb-kpi .val small{font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.1em;margin-left:3px;}
-.pdqfb-kpi .kpi-breakdown{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.06em;color:var(--cream-200);opacity:0.85;}
-.pdqfb-kpi .kpi-breakdown b{font-family:var(--font-fraunces),Georgia,serif;font-size:13px;font-weight:600;color:#fff;margin-right:3px;}
+.pdqfb-kpis.pdqfb-kpis-sec{grid-template-columns:repeat(4,1fr);margin-top:-14px;}
+@media(max-width:760px){.pdqfb-kpis.pdqfb-kpis-sec{grid-template-columns:repeat(2,1fr);}}
 .pdqfb-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 @media(max-width:760px){.pdqfb-grid{grid-template-columns:1fr;}}
 .pdqfb-panel{background:var(--paper);border:1px solid var(--hairline);border-radius:16px;padding:20px;}
