@@ -188,6 +188,11 @@ interface LuCursoResp {
     total_7d: number;
     abstencoes_7d: number;
     taxa_abstencao_7d: number;
+    // LC.3 — fila sobre todo o histórico. Opcionais de propósito: com a edge
+    // antiga a linha de contadores não renderiza, em vez de quebrar a aba.
+    total_geral?: number;
+    sem_feedback?: number;
+    revisadas?: number;
     usd_dia: number;
     usd_mes: number;
     teto_dia: number;
@@ -2348,13 +2353,39 @@ function LuCursoView({
         </button>
       </div>
 
+      {/* Story LC.3 — fila sobre TODO o histórico. Fica numa linha própria, ACIMA
+          dos cards de janela: são grandezas diferentes, e misturá-las é o que fazia
+          o dono ler "Não soube responder" como total histórico. Os opcionais (`?`)
+          são a degradação segura: com a edge antiga a linha simplesmente não sai. */}
+      {r.total_geral != null && r.sem_feedback != null && r.revisadas != null ? (
+        <div className="pdqfb-kpis">
+          <div className="pdqfb-kpi">
+            <div className="lbl">Total de perguntas</div>
+            <div className="val">{r.total_geral}</div>
+          </div>
+          <div className="pdqfb-kpi">
+            <div className="lbl">Sem feedback</div>
+            {/* zero é boa notícia aqui: fila de trabalho vazia */}
+            <div className="val" style={(r.sem_feedback ?? 0) > 0 ? { color: '#b3261e' } : undefined}>
+              {r.sem_feedback}
+            </div>
+          </div>
+          <div className="pdqfb-kpi">
+            <div className="lbl">Revisadas</div>
+            <div className="val">{r.revisadas}</div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="pdqfb-kpis">
         <div className="pdqfb-kpi dark">
           <div className="lbl">Perguntas (7 dias)</div>
           <div className="val">{r.total_7d}</div>
         </div>
         <div className="pdqfb-kpi">
-          <div className="lbl">Não soube responder</div>
+          {/* a janela precisa aparecer AQUI também: os dois cards vêm do mesmo
+              recorte, mas só o de cima dizia isso — e o dono leu como histórico */}
+          <div className="lbl">Não soube responder (7 dias)</div>
           <div className="val">
             {r.abstencoes_7d} <span style={{ fontSize: '0.6em', opacity: 0.7 }}>({pct}%)</span>
           </div>
