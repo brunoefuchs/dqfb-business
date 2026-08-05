@@ -177,6 +177,10 @@ interface LuCursoRow {
   score_topo: number | null;
   revisada_em: string | null;
   created_at: string;
+  // Story LC.1 — o que o dono CUROU (vem de kb_qa_curso pela origem). Opcionais:
+  // com a edge antiga o bloco simplesmente não renderiza, em vez de quebrar.
+  resposta_curada?: string | null;
+  curada_no_app?: boolean;
 }
 interface LuCursoResp {
   rows: LuCursoRow[];
@@ -404,16 +408,20 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   // origem da conversa (override quando a resposta veio do app); o front só manda
   // a intenção e o texto. Ver acaoLuCurso em admin-painel/index.ts.
   const acaoLuCurso = async (
-    action: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok' | 'lu_curso_ao_app',
+    action: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
     id: string,
     resposta?: string,
     pergunta?: string,
+    // Story LC.1: levar ao app é ADITIVO, não uma ação concorrente. Antes existia
+    // a action `lu_curso_ao_app` no lugar de salvar no curso — e o curso ficava sem
+    // a resposta enquanto o rótulo dizia "também".
+    aoApp = false,
   ): Promise<boolean> => {
     setErro('');
     try {
       const r = (await api('', {
         method: 'POST',
-        body: JSON.stringify({ action, id, resposta, pergunta }),
+        body: JSON.stringify({ action, id, resposta, pergunta, ao_app: aoApp }),
       })) as { sem_embedding?: boolean };
       // Sem embedding a entrada existe mas não é encontrável pela busca — avisar em
       // vez de deixar o dono achar que resolveu.
@@ -2311,10 +2319,11 @@ function LuCursoView({
   status: 'pendente' | 'abstencao' | 'revisadas' | 'tudo';
   onStatus: (st: 'pendente' | 'abstencao' | 'revisadas' | 'tudo') => void;
   onAcao: (
-    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok' | 'lu_curso_ao_app',
+    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
     id: string,
     resposta?: string,
     pergunta?: string,
+    aoApp?: boolean,
   ) => Promise<boolean>;
 }) {
   const r = d.resumo;
@@ -2411,18 +2420,22 @@ function LuCursoCard({
 }: {
   c: LuCursoRow;
   onAcao: (
-    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok' | 'lu_curso_ao_app',
+    a: 'lu_curso_corrigir' | 'lu_curso_ensinar' | 'lu_curso_ok',
     id: string,
     resposta?: string,
     pergunta?: string,
+    aoApp?: boolean,
   ) => Promise<boolean>;
 }) {
   const abst = c.rota === 'abstencao';
   const doApp = c.fonte_topo === 'app';
+  const curada = c.resposta_curada ?? null;
   const [editando, setEditando] = useState(false);
   // Corrigir começa do texto que saiu — quase sempre o conserto é um ajuste, não
   // uma reescrita. Ensinar começa vazio: não havia resposta nenhuma.
-  const [texto, setTexto] = useState(abst ? '' : c.resposta);
+  // Story LC.1: se JÁ existe resposta curada, ela é o ponto de partida — antes o
+  // campo abria vazio e levar ao app depois de ensinar exigia redigitar tudo.
+  const [texto, setTexto] = useState(curada ?? (abst ? '' : c.resposta));
   const [chave, setChave] = useState(c.pergunta);
   const [salvando, setSalvando] = useState(false);
   // "levar ao app" é outro destino, não outro botão de salvar: por isso o modo
@@ -2442,11 +2455,14 @@ function LuCursoCard({
   const salvar = async () => {
     if (!texto.trim()) return;
     setSalvando(true);
+    // Story LC.1 — `aoApp` virou FLAG, não ação concorrente: a resposta é sempre
+    // salva no curso, e o app recebe a proposta por cima quando o dono pede.
     const ok = await onAcao(
-      aoApp ? 'lu_curso_ao_app' : abst ? 'lu_curso_ensinar' : 'lu_curso_corrigir',
+      abst ? 'lu_curso_ensinar' : 'lu_curso_corrigir',
       c.id,
       texto.trim(),
       chave.trim(),
+      aoApp,
     );
     setSalvando(false);
     if (ok) {
@@ -2491,6 +2507,27 @@ function LuCursoCard({
         </details>
       ) : null}
 
+      {/* Story LC.1 — o que PASSOU A VALER. Fica ABAIXO do bloco do guard e não o
+          substitui: são as duas metades da mesma história (o que a aluna não
+          recebeu, e o que ela receberá da próxima vez). Aberto por padrão — a
+          resposta curada é a informação que o dono veio conferir; o texto barrado
+          é bastidor e segue recolhido. */}
+      {curada ? (
+        <details className="lu-bastidores" open>
+          <summary>
+            <span className="lu-onde" style={{ background: '#E8F3E8', color: '#2F5E32' }}>
+              você ensinou
+            </span>
+            {c.curada_no_app
+              ? 'esta é a resposta que vale agora — e já foi proposta ao app'
+              : 'esta é a resposta que vale agora no curso'}
+          </summary>
+          <div className="lu-tent">
+            <div className="lu-tent-gen" style={{ whiteSpace: 'pre-wrap' }}>{curada}</div>
+          </div>
+        </details>
+      ) : null}
+
       {editando ? (
         <div className="promform">
           <div>
@@ -2511,7 +2548,7 @@ function LuCursoCard({
           </div>
           <div className="lu-tent-motivo" style={aoApp ? { background: '#FFF4E5', borderColor: '#E8C48A' } : undefined}>
             {aoApp
-              ? '📲 VAI PARA O APP TAMBÉM — como PROPOSTA pendente, não como verdade. A aluna do app NÃO recebe nada até você aprovar em "Lu · Propostas". O curso não é alterado por este botão.'
+              ? '📲 SALVA NO CURSO E TAMBÉM VAI PARA O APP — no app entra como PROPOSTA pendente, não como verdade: a aluna do app não recebe nada até você aprovar em "Lu · Propostas". No curso, vale na hora.'
               : doApp && !abst
                 ? '📘 Esta resposta veio do acervo do APP. Salvar cria uma versão-curso: a Lu do curso passa a usar a sua, e a Lu do app continua com a original, intacta.'
                 : abst
@@ -2520,7 +2557,7 @@ function LuCursoCard({
           </div>
           <div className="racoes">
             <button className="b pink" onClick={salvar} disabled={salvando || !texto.trim()}>
-              {salvando ? 'Salvando…' : aoApp ? 'Enviar como proposta ao app' : 'Salvar para o curso'}
+              {salvando ? 'Salvando…' : aoApp ? 'Salvar no curso e propor ao app' : 'Salvar para o curso'}
             </button>
             <button
               className="b"
@@ -2537,24 +2574,34 @@ function LuCursoCard({
         </div>
       ) : (
         <div className="racoes">
-          <button className="b pink" onClick={() => setEditando(true)}>
-            {abst ? 'Ensinar a resposta' : doApp ? 'Corrigir para o curso' : 'Corrigir'}
+          <button
+            className="b pink"
+            // resincroniza com o que está no acervo: o componente é reusado entre
+            // recargas da fila (key = c.id), então o estado inicial pode estar velho
+            onClick={() => { setTexto(curada ?? (abst ? '' : c.resposta)); setEditando(true); }}
+          >
+            {curada ? 'Editar a resposta' : abst ? 'Ensinar a resposta' : doApp ? 'Corrigir para o curso' : 'Corrigir'}
           </button>
           {/* Sem isto, levar ao app exigia entrar em "Corrigir" — e quem quer
               propor uma resposta que já está BOA não tem nada a corrigir. Abre a
               tela já no modo ao-app: o dono confere o texto exato antes de enviar,
-              porque este é o único botão cuja consequência sai do curso. */}
-          {!abst ? (
+              porque este é o único botão cuja consequência sai do curso.
+
+              Story LC.1 (AC-5): passou a valer também para ABSTENÇÃO já ensinada.
+              Antes o botão sumia em todo card de abstenção — inclusive depois de
+              curado — e o único caminho era reabrir "Ensinar" num campo vazio.
+              Continua escondido só quando não há resposta alguma a propor. */}
+          {!abst || curada ? (
             <button
               className="b"
               onClick={() => {
-                setTexto(c.resposta);
+                setTexto(curada ?? c.resposta);
                 setAoApp(true);
                 setEditando(true);
               }}
               title="Propor esta resposta também para a Lu do app (entra como pendente)"
             >
-              📲 Levar ao app
+              {c.curada_no_app ? '📲 Reenviar ao app' : '📲 Levar ao app'}
             </button>
           ) : null}
           {!c.revisada_em ? (
