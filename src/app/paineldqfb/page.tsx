@@ -1640,16 +1640,11 @@ function LuView({
       </button>
     </div>
   );
-  if (d.itens.length === 0) {
-    return (
-      <>
-        {filtro}
-        <div className="pdqfb-loading">
-          {status === 'pendente' ? 'Nenhuma resposta pendente — a Lu está em dia. 💛' : 'Nenhuma resposta avaliada ainda.'}
-        </div>
-      </>
-    );
-  }
+  // Fila vazia NÃO esconde os cards (dono, 2026-08-06): antes havia um early-return aqui que
+  // saía antes dos KPIs, então zerar a fila levava junto "Perguntas (7 dias)", "Não soube
+  // responder" e os dois de gasto — justamente os números que não dependem de haver o que curar.
+  // Agora só a LISTA é condicional; o painel continua de pé.
+  const vazia = d.itens.length === 0;
   const negativas = d.itens.filter((x) => x.thumbs === -1).length;
   return (
     <>
@@ -1704,26 +1699,36 @@ function LuView({
         </div>
       ) : null}
 
-      <div className="pdqfb-filahead">
-        {d.pendentes} resposta(s)
-        {d.pendentes > d.itens.length
-          ? ` · mostrando ${d.pagina * d.por_pagina + 1}–${d.pagina * d.por_pagina + d.itens.length}`
-          : ''}{' '}
-        · 👎 aparecem primeiro · ✅ confiar · ✏️ corrigir (ensina a Lu) · 🗄️ ignorar · ⭐ exemplo
-      </div>
-      {d.itens.map((it) => (
-        <LuCard key={it.id} it={it} onSimples={onSimples} onCorrigir={onCorrigir} onReabrir={onReabrir} />
-      ))}
-      {(d.pagina > 0 || d.tem_proxima) && onPagina ? (
-        <div className="pdqfb-tabs" style={{ justifyContent: 'center', margin: '18px 0 0', borderBottom: 'none' }}>
-          <button disabled={d.pagina === 0} onClick={() => onPagina(d.pagina - 1)}>
-            ← anteriores
-          </button>
-          <button disabled={!d.tem_proxima} onClick={() => onPagina(d.pagina + 1)}>
-            próximas {d.por_pagina} →
-          </button>
+      {vazia ? (
+        <div className="pdqfb-loading">
+          {status === 'pendente'
+            ? 'Nenhuma resposta pendente — a Lu está em dia. 💛'
+            : 'Nenhuma resposta avaliada ainda.'}
         </div>
-      ) : null}
+      ) : (
+        <>
+          <div className="pdqfb-filahead">
+            {d.pendentes} resposta(s)
+            {d.pendentes > d.itens.length
+              ? ` · mostrando ${d.pagina * d.por_pagina + 1}–${d.pagina * d.por_pagina + d.itens.length}`
+              : ''}{' '}
+            · 👎 aparecem primeiro · ✅ confiar · ✏️ corrigir (ensina a Lu) · 🗄️ ignorar · ⭐ exemplo
+          </div>
+          {d.itens.map((it) => (
+            <LuCard key={it.id} it={it} onSimples={onSimples} onCorrigir={onCorrigir} onReabrir={onReabrir} />
+          ))}
+          {(d.pagina > 0 || d.tem_proxima) && onPagina ? (
+            <div className="pdqfb-tabs" style={{ justifyContent: 'center', margin: '18px 0 0', borderBottom: 'none' }}>
+              <button disabled={d.pagina === 0} onClick={() => onPagina(d.pagina - 1)}>
+                ← anteriores
+              </button>
+              <button disabled={!d.tem_proxima} onClick={() => onPagina(d.pagina + 1)}>
+                próximas {d.por_pagina} →
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
     </>
   );
 }
