@@ -2658,14 +2658,28 @@ function LuCursoCard({
           {!abst || curada ? (
             <button
               className="b"
-              onClick={() => {
-                setTexto(curada ?? c.resposta);
-                setAoApp(true);
-                setEditando(true);
+              disabled={salvando}
+              /* Story LC.4 (AC-9) — EXECUTA, não abre formulário. A LC.1 abria a tela
+                 de edição "para conferir o texto antes de enviar", e o dono cortou no
+                 smoke: o texto já está impresso logo acima, no bloco "você ensinou".
+                 A trava contra mandar bobagem para a aluna do app nunca foi esta
+                 conferência — é o `pendente`, que exige aprovação em "Lu · Propostas".
+                 Duas confirmações para a mesma decisão viram uma só que ninguém lê.
+                 Quem quiser MUDAR o texto continua tendo "Editar a resposta". */
+              onClick={async () => {
+                const txt = (curada ?? c.resposta).trim();
+                if (!txt) return;
+                setSalvando(true);
+                try {
+                  // a pergunta da aluna é a chave (mesmo padrão do formulário)
+                  await onAcao(abst ? 'lu_curso_ensinar' : 'lu_curso_corrigir', c.id, txt, c.pergunta.trim(), true);
+                } finally {
+                  setSalvando(false);
+                }
               }}
-              title="Propor esta resposta também para a Lu do app (entra como pendente)"
+              title="Salva no curso e propõe à Lu do app (entra como pendente — a aluna do app só recebe depois que você aprovar)"
             >
-              {c.curada_no_app ? '📲 Reenviar ao app' : '📲 Levar ao app'}
+              {salvando ? 'Enviando…' : c.curada_no_app ? '📲 Reenviar ao app' : '📲 Levar ao app'}
             </button>
           ) : null}
           {!c.revisada_em ? (
