@@ -427,13 +427,24 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
       const r = (await api('', {
         method: 'POST',
         body: JSON.stringify({ action, id, resposta, pergunta, ao_app: aoApp }),
-      })) as { sem_embedding?: boolean };
-      // Sem embedding a entrada existe mas não é encontrável pela busca — avisar em
-      // vez de deixar o dono achar que resolveu.
-      if (r?.sem_embedding) {
+      })) as { sem_embedding?: boolean; app_erro?: string | null };
+      // ⚠️ RECARREGAR ANTES DE AVISAR — a ordem aqui é o aviso (achado do gate LC.4).
+      // `loadLuCurso` começa com `setErro('')`: avisar primeiro e recarregar depois
+      // apagava a mensagem antes de ela chegar à tela. Era assim desde a LC.1, e por
+      // isso o aviso de `sem_embedding` nunca foi visto por ninguém — um alerta que
+      // não aparece é pior que nenhum, porque dá a sensação de que está coberto.
+      await loadLuCurso();
+      // Story LC.4 — o curso pode dar certo e o app falhar. O card sai da fila do
+      // mesmo jeito (o curso já está correto), então a tela precisa dizer o que
+      // faltou: sem isto o dono sairia acreditando que a proposta foi ao app.
+      // Campo opcional: com a edge antiga ele nunca chega e o aviso não aparece.
+      if (r?.app_erro) {
+        setErro(`Salvo no curso, mas a proposta ao app NÃO subiu — ${r.app_erro}. O card já saiu da fila; para tentar de novo, use "Levar ao app".`);
+      } else if (r?.sem_embedding) {
+        // Sem embedding a entrada existe mas não é encontrável pela busca — avisar em
+        // vez de deixar o dono achar que resolveu.
         setErro('Salvo, mas SEM embedding (a chave da OpenAI falhou). A Lu ainda não vai encontrar essa resposta — me avise para reindexar.');
       }
-      await loadLuCurso();
       return true;
     } catch (e) {
       setErro(String(e));
@@ -2137,6 +2148,12 @@ const CSS = `
 .pdqfb-rcard .rhead{display:flex;align-items:center;gap:10px;font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px;}
 .pdqfb-rcard .rhead .tier{background:var(--cream-200);color:var(--ink-2);padding:2px 8px;border-radius:999px;}
 .pdqfb-rcard .rhead .rdata{margin-left:auto;}
+/* LC.4 — selos de destino. Mesma pílula do .tier, cores dos dois acervos: verde é o
+   curso (a mesma do bloco "você ensinou"), azul é o app. Discretos de propósito: são
+   confirmação, não alarme. */
+.pdqfb-rcard .rhead .lu-selo{padding:2px 8px;border-radius:999px;letter-spacing:0.06em;}
+.pdqfb-rcard .rhead .lu-selo.curso{background:#E8F3E8;color:#2F5E32;}
+.pdqfb-rcard .rhead .lu-selo.app{background:#E4EDF8;color:#1F4A7A;}
 .pdqfb-rcard .rperg{font-family:var(--font-fraunces),Georgia,serif;font-style:italic;font-size:18px;color:var(--ink);margin-bottom:8px;}
 .pdqfb-rcard .rresp{font-size:14px;line-height:1.55;color:var(--ink-2);white-space:pre-wrap;max-height:240px;overflow:auto;background:var(--off);border-radius:10px;padding:12px;}
 .pdqfb-rcard .rfontes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
@@ -2427,7 +2444,10 @@ function LuCursoView({
           {status === 'pendente'
             ? 'Nada a revisar — tudo em dia por aqui. 💛'
             : status === 'abstencao'
-              ? 'Nenhuma abstenção no período. 💛'
+              // LC.4 — a aba virou fila de trabalho, então vazio aqui significa
+              // "nada esperando", não "nunca houve". Dizer "no período" mandaria o
+              // dono procurar um buraco que ele já tapou.
+              ? 'Nenhuma abstenção esperando resposta — o que você já ensinou está em "Já revisadas". 💛'
               : status === 'revisadas'
                 ? 'Nenhuma revisada ainda — o que você aprovar ou corrigir aparece aqui.'
                 : 'Nenhuma conversa ainda — a Lu do Curso ainda não foi usada.'}
@@ -2517,6 +2537,14 @@ function LuCursoCard({
         </span>
         {c.score_topo != null ? <span>proximidade {c.score_topo.toFixed(2)}</span> : null}
         {c.revisada_em ? <span>✓ revisada</span> : null}
+        {/* Story LC.4 — ONDE a resposta já está, no lugar onde o olho bate primeiro.
+            Antes isso só existia dentro do bloco recolhível "você ensinou" e no rótulo
+            do botão — sutil demais para a pergunta que o dono faz ao abrir a aba.
+            `curada` prova o curso (só o marcador na origem conta como curadoria);
+            `curada_no_app` prova a proposta. Os dois são opcionais: com edge antiga
+            simplesmente não renderizam. */}
+        {curada ? <span className="lu-selo curso">📗 no curso</span> : null}
+        {c.curada_no_app ? <span className="lu-selo app">📲 no app</span> : null}
         <span className="rdata">{quando}</span>
       </div>
 
