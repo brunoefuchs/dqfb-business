@@ -181,6 +181,9 @@ interface LuCursoRow {
   // com a edge antiga o bloco simplesmente não renderiza, em vez de quebrar.
   resposta_curada?: string | null;
   curada_no_app?: boolean;
+  // Story LC.5 — `aprovado` = a aluna do app já recebe; `pendente` = espera na fila.
+  // Opcional: com edge antiga o selo cai para o genérico em vez de sumir.
+  curada_no_app_status?: 'aprovado' | 'pendente';
 }
 interface LuCursoResp {
   rows: LuCursoRow[];
@@ -284,6 +287,10 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   const [luProp, setLuProp] = useState<LuPropostaResp | null>(null);
   const [minerando, setMinerando] = useState(false);
   const [erro, setErro] = useState('');
+  // Story LC.5 — aviso NEUTRO/positivo. O painel só tinha faixa de erro (vermelha), e
+  // "foi para o acervo do app" não é erro: pintar de vermelho o caminho que deu certo
+  // ensina o dono a ignorar a faixa toda.
+  const [nota, setNota] = useState('');
   const [carregando, setCarregando] = useState(true);
 
   const loadCusto = useCallback(async () => {
@@ -351,6 +358,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   const [luCursoStatus, setLuCursoStatus] = useState<'pendente' | 'abstencao' | 'revisadas' | 'tudo'>('pendente');
   const loadLuCurso = useCallback(async (st?: 'pendente' | 'abstencao' | 'revisadas' | 'tudo') => {
     setErro('');
+    setNota('');
     setCarregando(true);
     try {
       setLuCurso((await api('?fila=lu-curso&status=' + (st ?? luCursoStatus))) as LuCursoResp);
@@ -427,7 +435,13 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
       const r = (await api('', {
         method: 'POST',
         body: JSON.stringify({ action, id, resposta, pergunta, ao_app: aoApp }),
-      })) as { sem_embedding?: boolean; app_erro?: string | null };
+      })) as {
+        sem_embedding?: boolean;
+        app_erro?: string | null;
+        // Story LC.5 — opcionais: com a edge antiga não chegam e a tela se cala.
+        app_status?: 'pendente' | 'aprovado' | null;
+        app_motivo?: string | null;
+      };
       // ⚠️ RECARREGAR ANTES DE AVISAR — a ordem aqui é o aviso (achado do gate LC.4).
       // `loadLuCurso` começa com `setErro('')`: avisar primeiro e recarregar depois
       // apagava a mensagem antes de ela chegar à tela. Era assim desde a LC.1, e por
@@ -440,6 +454,16 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
       // Campo opcional: com a edge antiga ele nunca chega e o aviso não aparece.
       if (r?.app_erro) {
         setErro(`Salvo no curso, mas a proposta ao app NÃO subiu — ${r.app_erro}. O card já saiu da fila; para tentar de novo, use "Levar ao app".`);
+      } else if (r?.app_status === 'pendente' && r.app_motivo) {
+        // A rede pegou: o texto foi escrito para a aluna do CURSO e cita algo que a do
+        // app não tem. Dizer QUAL termo é o que torna o aviso acionável — sem isso o
+        // dono abriria a fila sem saber o que procurar.
+        setErro(
+          `Salvo no curso. No app ficou como PROPOSTA porque o texto cita "${r.app_motivo}" — ` +
+          'a aluna do app não tem isso. Revise em "Lu · Propostas" antes de aprovar.',
+        );
+      } else if (r?.app_status === 'aprovado') {
+        setNota('Salvo no curso e no acervo do app — a aluna do app já recebe esta resposta. 💛');
       } else if (r?.sem_embedding) {
         // Sem embedding a entrada existe mas não é encontrável pela busca — avisar em
         // vez de deixar o dono achar que resolveu.
@@ -700,6 +724,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
         </div>
 
         {erro ? <div className="pdqfb-err">{erro}</div> : null}
+        {nota ? <div className="pdqfb-nota">{nota}</div> : null}
         {carregando ? <div className="pdqfb-loading">Carregando…</div> : null}
 
         {!carregando && tab === 'custo' && custo ? <CustoView d={custo} onSetSaldo={setSaldoAncora} /> : null}
@@ -2107,6 +2132,8 @@ const CSS = `
 .pdqfb-minerar{font-family:inherit;font-size:13px;font-weight:600;letter-spacing:0.01em;text-transform:none;background:var(--pinky);color:#fff;border:1px solid var(--pinky);border-bottom:1px solid var(--pinky);border-radius:999px;padding:9px 18px;cursor:pointer;}
 .pdqfb-minerar:disabled{opacity:0.55;cursor:not-allowed;}
 .pdqfb-err{color:var(--velvet);font-size:13px;margin:8px 0;}
+/* LC.5 — irmã da faixa de erro, para o que deu certo e precisa ser dito. */
+.pdqfb-nota{color:#2F5E32;background:#E8F3E8;border-radius:8px;padding:8px 12px;font-size:13px;margin:8px 0;}
 .pdqfb-loading{color:var(--ink-3);font-family:ui-monospace,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;padding:20px 0;}
 .pdqfb-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:4px 0 22px;}
 @media(max-width:760px){.pdqfb-kpis{grid-template-columns:repeat(2,1fr);}}
@@ -2154,6 +2181,8 @@ const CSS = `
 .pdqfb-rcard .rhead .lu-selo{padding:2px 8px;border-radius:999px;letter-spacing:0.06em;}
 .pdqfb-rcard .rhead .lu-selo.curso{background:#E8F3E8;color:#2F5E32;}
 .pdqfb-rcard .rhead .lu-selo.app{background:#E4EDF8;color:#1F4A7A;}
+/* LC.5 — proposto ≠ no app: âmbar de espera, não o azul de quem já chegou. */
+.pdqfb-rcard .rhead .lu-selo.proposto{background:#FFF4E5;color:#8A5A12;}
 .pdqfb-rcard .rperg{font-family:var(--font-fraunces),Georgia,serif;font-style:italic;font-size:18px;color:var(--ink);margin-bottom:8px;}
 .pdqfb-rcard .rresp{font-size:14px;line-height:1.55;color:var(--ink-2);white-space:pre-wrap;max-height:240px;overflow:auto;background:var(--off);border-radius:10px;padding:12px;}
 .pdqfb-rcard .rfontes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
@@ -2544,7 +2573,22 @@ function LuCursoCard({
             `curada_no_app` prova a proposta. Os dois são opcionais: com edge antiga
             simplesmente não renderizam. */}
         {curada ? <span className="lu-selo curso">📗 no curso</span> : null}
-        {c.curada_no_app ? <span className="lu-selo app">📲 no app</span> : null}
+        {/* Story LC.5 — os dois estados passaram a coexistir: com o clique do dono
+            valendo como aprovação, a maioria entra APROVADA (a aluna do app já
+            recebe) e só o que a rede barrou fica esperando na fila. Um selo só para
+            os dois mentiria para metade dos cards. */}
+        {/* ⚠️ O teste é por `=== 'aprovado'`, não por `=== 'pendente'` (achado do gate
+            LC.5): com a edge ANTIGA o campo não chega, e cair no "no app" afirmaria à
+            toa que a aluna do app já recebe. Na dúvida, o selo mais fraco — dizer
+            "proposto" sobre algo aprovado custa um segundo de confusão; dizer "no app"
+            sobre algo pendente faz o dono parar de conferir a fila. */}
+        {c.curada_no_app ? (
+          c.curada_no_app_status === 'aprovado' ? (
+            <span className="lu-selo app">📲 no app</span>
+          ) : (
+            <span className="lu-selo proposto">📲 proposto</span>
+          )
+        ) : null}
         <span className="rdata">{quando}</span>
       </div>
 
