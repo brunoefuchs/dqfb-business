@@ -465,10 +465,13 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
         // resultado é silêncio. A edge de hoje sempre manda o motivo junto; o front não
         // tem como garantir isso amanhã, e "só avisa se vier completo" é como o aviso
         // some sem ninguém notar.
+        const porque = r.app_motivo
+          ? (MOTIVO_REDE[r.app_motivo] ?? `cita "${r.app_motivo}"`)
+          : null;
         setErro(
-          r.app_motivo
-            ? `Salvo no curso. No app ficou como PROPOSTA porque o texto cita "${r.app_motivo}" — ` +
-              'a aluna do app não tem isso. Revise em "Lu · Propostas" antes de aprovar.'
+          porque
+            ? `Salvo no curso. No app ficou como PROPOSTA: o texto ${porque}. ` +
+              'Revise em "Lu · Propostas" antes de aprovar.'
             : 'Salvo no curso. No app ficou como PROPOSTA — revise em "Lu · Propostas" antes de aprovar.',
         );
       } else if (r?.sem_embedding) {
@@ -2509,6 +2512,35 @@ const LU_CURSO_MOTIVO: Record<string, string> = {
   embed_falhou: 'falha ao interpretar a pergunta',
   busca_falhou: 'falha na busca',
   teto: 'teto de custo do dia',
+};
+
+/**
+ * O motivo da rede (curso→app) em português de gente.
+ * =============================================================================
+ * A edge devolve o NOME INTERNO da família ("dêitico de módulo"), que serve para
+ * agrupar na medição e é péssimo na tela: o dono lia 'o texto cita "dêitico de
+ * módulo"' — e ele não citou essa expressão, ele USOU um dêitico. Nome interno
+ * vazando para a tela vira uma frase que ninguém escreveria.
+ *
+ * Cada entrada começa em verbo, para caber em "o texto {…}", e explica POR QUE
+ * aquilo não serve no app — que é a informação que faz o dono decidir sem abrir a
+ * fila. Família nova sem tradução cai no genérico, com o nome cru entre aspas:
+ * feio, mas nunca mudo (a regra desta série).
+ */
+const MOTIVO_REDE: Record<string, string> = {
+  'aula': 'cita aula — a aluna do app não tem acesso às aulas',
+  'vídeo': 'cita vídeo — as receitas do app não têm vídeo',
+  'assista': 'manda assistir a algo — no app não há vídeo de receita',
+  'ConfeitBook': 'cita o ConfeitBook, que não existe no app',
+  'dêitico de módulo': 'fala de um módulo sem dizer qual — no app isso não aponta para nada',
+  'módulo numerado': 'cita módulo por número, e os módulos do app têm nome',
+  'PDF': 'cita PDF, e o app não tem material para baixar',
+  'e-book': 'cita e-book, e o app não tem material para baixar',
+  'apostila': 'cita apostila, e o app não tem material para baixar',
+  'material para baixar': 'oferece material para baixar, que o app não tem',
+  'área de membros': 'manda para a área de membros, que é do curso',
+  'plataforma do curso': 'manda para a plataforma do curso',
+  'abaixo do passo a passo': 'diz que os ingredientes ficam abaixo do passo a passo — no app eles vêm ANTES',
 };
 
 function LuCursoCard({
