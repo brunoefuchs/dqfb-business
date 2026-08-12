@@ -2656,7 +2656,11 @@ function LuCursoCard({
           </div>
           <div className="lu-tent-motivo" style={aoApp ? { background: '#FFF4E5', borderColor: '#E8C48A' } : undefined}>
             {aoApp
-              ? '📲 SALVA NO CURSO E TAMBÉM VAI PARA O APP — no app entra como PROPOSTA pendente, não como verdade: a aluna do app não recebe nada até você aprovar em "Lu · Propostas". No curso, vale na hora.'
+              // ⚠️ Este texto descrevia a política ANTERIOR e sobreviveu à mudança da
+              // LC.5 por algumas horas, dizendo que tudo entrava como proposta pendente.
+              // Microcopy que descreve regra é parte da regra: quando a regra muda e o
+              // texto fica, ele não é só desatualizado — passa a mentir.
+              ? '📲 SALVA NO CURSO E TAMBÉM NO APP — vale na hora nos dois: a aluna do app já recebe. A exceção é se o texto citar algo que o app não tem (aula, módulo, ConfeitBook, PDF) — aí entra como PROPOSTA e espera você aprovar em "Lu · Propostas".'
               : doApp && !abst
                 ? '📘 Esta resposta veio do acervo do APP. Salvar cria uma versão-curso: a Lu do curso passa a usar a sua, e a Lu do app continua com a original, intacta.'
                 : abst
@@ -2721,7 +2725,7 @@ function LuCursoCard({
                   setSalvando(false);
                 }
               }}
-              title="Salva no curso e propõe à Lu do app (entra como pendente — a aluna do app só recebe depois que você aprovar)"
+              title="Salva no curso e manda para o acervo da Lu do app — vale na hora. Se o texto citar coisa que o app não tem (aula, módulo, ConfeitBook), entra como proposta e espera sua aprovação."
             >
               {salvando ? 'Enviando…' : c.curada_no_app ? '📲 Reenviar ao app' : '📲 Levar ao app'}
             </button>
