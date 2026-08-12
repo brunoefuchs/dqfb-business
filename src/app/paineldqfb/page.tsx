@@ -454,20 +454,30 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
       // Campo opcional: com a edge antiga ele nunca chega e o aviso não aparece.
       if (r?.app_erro) {
         setErro(`Salvo no curso, mas a proposta ao app NÃO subiu — ${r.app_erro}. O card já saiu da fila; para tentar de novo, use "Levar ao app".`);
-      } else if (r?.app_status === 'pendente' && r.app_motivo) {
+      } else if (r?.app_status === 'pendente') {
         // A rede pegou: o texto foi escrito para a aluna do CURSO e cita algo que a do
         // app não tem. Dizer QUAL termo é o que torna o aviso acionável — sem isso o
         // dono abriria a fila sem saber o que procurar.
+        //
+        // ⚠️ O `&& r.app_motivo` saiu da condição (CodeRabbit, MAJOR): sem motivo, o
+        // `else if` seguinte não casava e a tela ficava MUDA sobre um rebaixamento que
+        // aconteceu. É a mesma família do defeito Q1 desta série — caminho cujo
+        // resultado é silêncio. A edge de hoje sempre manda o motivo junto; o front não
+        // tem como garantir isso amanhã, e "só avisa se vier completo" é como o aviso
+        // some sem ninguém notar.
         setErro(
-          `Salvo no curso. No app ficou como PROPOSTA porque o texto cita "${r.app_motivo}" — ` +
-          'a aluna do app não tem isso. Revise em "Lu · Propostas" antes de aprovar.',
+          r.app_motivo
+            ? `Salvo no curso. No app ficou como PROPOSTA porque o texto cita "${r.app_motivo}" — ` +
+              'a aluna do app não tem isso. Revise em "Lu · Propostas" antes de aprovar.'
+            : 'Salvo no curso. No app ficou como PROPOSTA — revise em "Lu · Propostas" antes de aprovar.',
         );
+      } else if (r?.sem_embedding) {
+        // ⚠️ ANTES do ramo 'aprovado' (CodeRabbit, MAJOR): sem embedding a entrada existe
+        // mas a busca não a encontra, então "a aluna do app já recebe" seria falso —
+        // ela está no acervo e muda. Aviso vence comemoração.
+        setErro('Salvo, mas SEM embedding (a chave da OpenAI falhou). A Lu ainda não vai encontrar essa resposta — me avise para reindexar.');
       } else if (r?.app_status === 'aprovado') {
         setNota('Salvo no curso e no acervo do app — a aluna do app já recebe esta resposta. 💛');
-      } else if (r?.sem_embedding) {
-        // Sem embedding a entrada existe mas não é encontrável pela busca — avisar em
-        // vez de deixar o dono achar que resolveu.
-        setErro('Salvo, mas SEM embedding (a chave da OpenAI falhou). A Lu ainda não vai encontrar essa resposta — me avise para reindexar.');
       }
       return true;
     } catch (e) {
@@ -724,7 +734,9 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
         </div>
 
         {erro ? <div className="pdqfb-err">{erro}</div> : null}
-        {nota ? <div className="pdqfb-nota">{nota}</div> : null}
+        {/* role/aria-live (CodeRabbit, MINOR): a nota aparece DEPOIS de uma ação, sem
+            foco nem mudança de rota — leitor de tela não anunciaria nada. */}
+        {nota ? <div className="pdqfb-nota" role="status" aria-live="polite">{nota}</div> : null}
         {carregando ? <div className="pdqfb-loading">Carregando…</div> : null}
 
         {!carregando && tab === 'custo' && custo ? <CustoView d={custo} onSetSaldo={setSaldoAncora} /> : null}
