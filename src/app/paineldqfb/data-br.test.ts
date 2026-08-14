@@ -20,7 +20,17 @@ beforeAll(() => {
   process.env.TZ = 'UTC';
 });
 afterAll(() => {
-  process.env.TZ = TZ_ORIGINAL;
+  // 🔴 RESTAURAR É APAGAR, quando a variável não existia (QA-03).
+  //
+  // `process.env.TZ = undefined` NÃO limpa nada: o Node converte o valor para string e
+  // a variável passa a valer a palavra **"undefined"** — um fuso que não existe. Esta
+  // máquina não define `TZ`, então era exatamente esse o caso.
+  //
+  // Hoje não quebra porque o vitest isola por arquivo. Com `--singleFork` (ou qualquer
+  // reuso de processo), o arquivo seguinte herdaria `TZ="undefined"` e passaria a medir
+  // um fuso inventado — o tipo de defeito que só aparece depois, e longe daqui.
+  if (TZ_ORIGINAL === undefined) delete process.env.TZ;
+  else process.env.TZ = TZ_ORIGINAL;
 });
 
 describe('🔴 data-only (YYYY-MM-DD) não perde um dia', () => {
