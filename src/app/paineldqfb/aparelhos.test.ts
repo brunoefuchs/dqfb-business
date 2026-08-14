@@ -4,7 +4,14 @@
  * ⛔ NÃO cobre o JSX (markup direto no `page.tsx`). Declarado, não fingido.
  */
 import { describe, expect, it } from 'vitest';
-import { estadoDosAparelhos, sinal, RESSALVAS, type AparelhoLinha } from './aparelhos';
+import {
+  estadoDosAparelhos,
+  rotuloSinal,
+  sinal,
+  LEGENDA_OLHAR,
+  RESSALVAS,
+  type AparelhoLinha,
+} from './aparelhos';
 
 function linha(over: Partial<AparelhoLinha> = {}): AparelhoLinha {
   return {
@@ -19,6 +26,62 @@ describe('AC-5 — sem dado, não inventa', () => {
     for (const v of [undefined, null, []]) {
       expect(estadoDosAparelhos(v as AparelhoLinha[] | null).temDado).toBe(false);
     }
+  });
+
+  // 🔴 "Não tenho lista" e "a lista está vazia" NÃO são a mesma frase na tela.
+  //
+  // O comentário do tipo prometia `semDado` e a primeira versão não implementou: os três
+  // valores caíam no mesmo `temDado: false` e a tela afirmava "nenhuma conta com mais de
+  // um aparelho registrado" sem que ninguém tivesse apurado nada.
+  describe('🔴 semDado separa "não apurado" de "apurado, ninguém bate"', () => {
+    it('campo AUSENTE (undefined) → semDado (é o que o edge manda hoje)', () => {
+      expect(estadoDosAparelhos(undefined).semDado).toBe(true);
+    });
+
+    it('null → semDado', () => {
+      expect(estadoDosAparelhos(null).semDado).toBe(true);
+    });
+
+    it('array VAZIO → NÃO é semDado: a consulta respondeu, e isso é informação', () => {
+      const e = estadoDosAparelhos([]);
+      expect(e.semDado).toBe(false);
+      expect(e.temDado).toBe(false);
+    });
+
+    it('com linha → nem semDado nem vazio', () => {
+      const e = estadoDosAparelhos([linha()]);
+      expect(e.semDado).toBe(false);
+      expect(e.temDado).toBe(true);
+    });
+  });
+});
+
+describe('🔴 o rótulo do sinal é TEXTO — cor não pode ser o único portador (WCAG 1.4.1)', () => {
+  it('conta que chama atenção ganha a palavra "Olhar"', () => {
+    // Literal cravado de propósito: passar a própria constante do módulo como esperado
+    // deixaria o mutante vivo — o teste concordaria com qualquer texto.
+    expect(rotuloSinal(linha({ ativos_30d: 3, redes_distintas: 3 }))).toBe('Olhar');
+  });
+
+  it('conta normal não ganha rótulo nenhum', () => {
+    expect(rotuloSinal(linha({ ativos_30d: 1, redes_distintas: 1 }))).toBe(null);
+  });
+
+  it('o rótulo segue o `sinal`, não um critério paralelo', () => {
+    for (const l of [
+      linha({ aparelhos: 4, ativos_30d: 4, redes_distintas: 1 }),
+      linha({ aparelhos: 1, ativos_30d: 1, redes_distintas: 4 }),
+      linha({ ativos_30d: 3, redes_distintas: 3 }),
+      linha({ aparelhos: 5, ativos_30d: 1, redes_distintas: 5 }),
+    ]) {
+      expect(rotuloSinal(l) === null).toBe(sinal(l) === 'normal');
+    }
+  });
+
+  it('⛔ a legenda diz o critério e nega o veredito', () => {
+    // Sem isto, "Olhar" na tela vira acusação. O CGNAT é a razão pela qual não é.
+    expect(LEGENDA_OLHAR).toContain('CGNAT');
+    expect(LEGENDA_OLHAR).toContain('Não é veredito');
   });
 });
 

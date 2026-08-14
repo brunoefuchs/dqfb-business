@@ -60,7 +60,27 @@ describe('AC-4 — a barra diz quando foi medida', () => {
   it('medido_em nulo não pode fingir que está fresco nem quebrar', () => {
     // Se o cron parar por 3 dias, a barra continuaria mostrando número de 3 dias atrás
     // com cara de agora. Sem data, o card simplesmente não afirma quando mediu.
-    expect(estadoDaCotaEmail(medicao({ medido_em: null }), AGORA).velho).toBe(false);
+    const e = estadoDaCotaEmail(medicao({ medido_em: null }), AGORA);
+    expect(e.velho).toBe(false);
+    expect(e.medidoEmMs).toBe(null);
+  });
+
+  // 🔴 A conta antiga era `agora - new Date(medido_em).getTime() > 48h`. Com data
+  // corrompida isso é `NaN > 48h`, que é `false` — a medição inválida passava por FRESCA,
+  // o oposto exato do que o campo serve para avisar. E a tela imprimia `Invalid Date`
+  // ao lado da barra.
+  it('🔴 medido_em corrompido não passa por fresco', () => {
+    for (const lixo of ['', 'ontem', '2026-13-45T99:99:99Z', 'null']) {
+      const e = estadoDaCotaEmail(medicao({ medido_em: lixo }), AGORA);
+      expect(e.medidoEmMs).toBe(null); // a tela não escreve "Medido em ..." sem isto
+      expect(e.velho).toBe(false); // não é velho — mas também não é fresco: é ilegível
+      expect(e.temMedicao).toBe(true); // o pct medido continua valendo
+    }
+  });
+
+  it('medido_em válido entrega o instante para a tela formatar', () => {
+    // Cravado: o epoch de 2026-08-14T11:00:00Z. A tela usa ISTO, não o campo cru.
+    expect(estadoDaCotaEmail(medicao(), AGORA).medidoEmMs).toBe(1786705200000);
   });
 });
 

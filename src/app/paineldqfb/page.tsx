@@ -30,7 +30,14 @@ interface SaldoLinha {
   ancora_em: string;
 }
 import { estadoDaCotaEmail } from './cota-email';
-import { estadoDosAparelhos, sinal as sinalAparelho, RESSALVAS as RESSALVAS_APARELHOS } from './aparelhos';
+import {
+  estadoDosAparelhos,
+  rotuloSinal as rotuloSinalAparelho,
+  sinal as sinalAparelho,
+  RESSALVAS as RESSALVAS_APARELHOS,
+  LEGENDA_OLHAR,
+} from './aparelhos';
+import { fmtDataBr } from './data-br';
 
 interface Custo {
   dias_grafico: number;
@@ -1072,11 +1079,15 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
         <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
           {cota.temMedicao && mq ? (
             <>
-              {mq.periodo_fim ? <>Reseta em {fmtData(mq.periodo_fim)}. </> : null}
-              {mq.medido_em ? (
+              {mq.periodo_fim ? <>Reseta em {fmtDataBr(mq.periodo_fim)}. </> : null}
+              {/* 🔴 Quem manda aqui é `cota.medidoEmMs`, não `mq.medido_em`: com data
+                  corrompida o campo cru existe (a condição passa) e a tela imprimia
+                  `Invalid Date` ao lado da barra. Sem instante legível, não escreve nada. */}
+              {cota.medidoEmMs != null ? (
                 <>
                   Medido em{' '}
-                  {new Date(mq.medido_em).toLocaleString('pt-BR', {
+                  {new Date(cota.medidoEmMs).toLocaleString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo', // dia BR, nunca UTC — regra da casa
                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
                   })}
                   {cota.velho ? (
@@ -1118,6 +1129,14 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
                     className="v"
                     style={sinalAparelho(l) === 'olhar' ? { color: '#d68910' } : undefined}
                   >
+                    {/* 🔴 O rótulo em TEXTO, não só a cor: o laranja sozinho não comunica
+                        (WCAG 1.4.1) e quem lê o painel não tem como saber que aquele tom
+                        significa alguma coisa. A legenda logo abaixo diz o que é. */}
+                    {rotuloSinalAparelho(l) ? (
+                      <small style={{ marginRight: 6, fontWeight: 600 }}>
+                        {rotuloSinalAparelho(l)}
+                      </small>
+                    ) : null}
                     {l.aparelhos}
                   </div>
                 </div>
@@ -1132,12 +1151,26 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
               </div>
             ))}
           </>
+        ) : aparelhos.semDado ? (
+          /* 🔴 NADA foi apurado — e isso NÃO é "ninguém compartilha". A distinção existe
+             porque dizer "nenhuma conta tem 2+ aparelhos" sobre um número que ninguém
+             olhou é a mesma invenção que o card da cota de e-mail combate com "ainda não
+             medido". Medido em 2026-08-14: `app.perfil_aparelho` tem 0 linhas. */
+          <div className="pdqfb-row">
+            <div className="name">
+              ainda não medido{' '}
+              <small>
+                o resumo não veio do edge — a tabela de aparelhos pode estar vazia, ou a
+                consulta não respondeu. Não quer dizer que ninguém tenha dois aparelhos.
+              </small>
+            </div>
+            <div className="v">—</div>
+          </div>
         ) : (
-          /* 🔴 Sem dado, diz que não há — não inventa lista vazia com cara de "ninguém
-             compartilha". A tabela só se enche depois que o app publicar. */
+          /* Apurado, e ninguém bate o critério. Aqui a afirmação é legítima: houve leitura. */
           <div className="pdqfb-row">
             <div className="name">nenhuma conta com mais de um aparelho registrado</div>
-            <div className="v">—</div>
+            <div className="v">0</div>
           </div>
         )}
         <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
@@ -1148,6 +1181,7 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
               ⚠️ {r}
             </span>
           ))}
+          <span style={{ display: 'block', marginTop: 4 }}>{LEGENDA_OLHAR}</span>
           <span style={{ display: 'block', marginTop: 4 }}>
             Este quadro <strong>não limita nada</strong> — nenhum acesso é bloqueado por
             causa dele.
@@ -1517,18 +1551,9 @@ function estadoCuradoria(it: AvaliadorItem): string {
   return 'pendente';
 }
 
-// Data em fuso BR (America/Sao_Paulo) — o dia bate com o calendário da Fran.
-function fmtData(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
+// Data em fuso BR: `fmtDataBr` em `./data-br` — o MESMO módulo que os testes exercitam.
+// Era uma função local aqui; virou módulo quando o card da cota precisou formatar `date`
+// puro (`periodo_fim`) sem passar por `Date`, e um teste da tela inteira não é opção.
 
 // Os 5 níveis oficiais (12.Q5.1) — usados no <select> do editor de curadoria.
 const NIVEIS: ReadonlyArray<{ v: string; label: string }> = [
@@ -1641,8 +1666,8 @@ function AvaliadorCard({ it, onAcao }: { it: AvaliadorItem; onAcao: AcaoAvaliado
       ) : null}
 
       <div className="adatas">
-        Avaliado em {fmtData(it.ultima)}
-        {jaCurado && it.curado_em ? ` · Curado em ${fmtData(it.curado_em)}` : ''}
+        Avaliado em {fmtDataBr(it.ultima)}
+        {jaCurado && it.curado_em ? ` · Curado em ${fmtDataBr(it.curado_em)}` : ''}
       </div>
 
       {editor === null ? (
@@ -2008,8 +2033,8 @@ function LuCard({
           </span>
         ) : null}
         <span className="rdata">
-          aluna {fmtData(it.created_at)}
-          {trilha?.em ? ' · curada ' + fmtData(trilha.em) : ''}
+          aluna {fmtDataBr(it.created_at)}
+          {trilha?.em ? ' · curada ' + fmtDataBr(trilha.em) : ''}
         </span>
       </div>
       <div className="rperg">{it.pergunta}</div>
@@ -2239,7 +2264,7 @@ function LuPropostaCard({
           <span className="tier" style={{ background: '#FBEEDC', color: '#8A5A18' }}>sem receita amarrada</span>
         )}
         {it.fonte ? <span className="tier">{FONTE_PROP_LABEL[it.fonte] ?? it.fonte}</span> : null}
-        <span className="rdata">minerada {fmtData(it.created_at)}</span>
+        <span className="rdata">minerada {fmtDataBr(it.created_at)}</span>
       </div>
       <div className="rperg">{it.pergunta}</div>
 

@@ -23,6 +23,14 @@ export type EstadoCota = {
   larguraPct: number;
   /** a medição é diária; acima de 48h o número está velho e quem olha precisa saber */
   velho: boolean;
+  /**
+   * `medido_em` em epoch ms, ou `null` quando o campo está AUSENTE **ou INVÁLIDO**.
+   *
+   * 🔴 O null carrega as duas coisas de propósito: a tela só escreve "Medido em ..."
+   * quando isto não é null. Antes ela fazia `new Date(mq.medido_em)` por conta própria e
+   * imprimia literalmente `Invalid Date` ao lado da barra quando o campo vinha corrompido.
+   */
+  medidoEmMs: number | null;
   /** mesmos cortes do alerta do CRM — painel e sino não podem discordar */
   nivel: 'sem_medicao' | 'ok' | 'alerta' | 'critico';
 };
@@ -43,13 +51,25 @@ const HORAS_ATE_ENVELHECER = 48;
  */
 export function estadoDaCotaEmail(mq: CotaEmail | undefined | null, agora = Date.now()): EstadoCota {
   if (!mq) {
-    return { temMedicao: false, larguraPct: 0, velho: false, nivel: 'sem_medicao' };
+    return { temMedicao: false, larguraPct: 0, velho: false, medidoEmMs: null, nivel: 'sem_medicao' };
   }
   const pct = Number.isFinite(mq.pct) ? mq.pct : 0;
   const larguraPct = Math.max(0, Math.min(100, pct));
-  const velho =
-    mq.medido_em != null &&
-    agora - new Date(mq.medido_em).getTime() > HORAS_ATE_ENVELHECER * 3600 * 1000;
+  const medidoEmMs = instanteValido(mq.medido_em);
+  // 🔴 Só um instante VÁLIDO pode ser chamado de velho — ou de fresco.
+  //
+  // A conta antiga era `agora - new Date(mq.medido_em).getTime() > 48h`. Com data
+  // corrompida isso vira `agora - NaN`, que é `NaN`, e `NaN > x` é `false`: a medição
+  // inválida saía como FRESCA, exatamente o oposto do que o campo existe para avisar.
+  // Sem data confiável o card não afirma nem uma coisa nem outra.
+  const velho = medidoEmMs != null && agora - medidoEmMs > HORAS_ATE_ENVELHECER * 3600 * 1000;
   const nivel = pct >= LIMIAR_CRITICO ? 'critico' : pct >= LIMIAR_ALERTA ? 'alerta' : 'ok';
-  return { temMedicao: true, larguraPct, velho, nivel };
+  return { temMedicao: true, larguraPct, velho, medidoEmMs, nivel };
+}
+
+/** Parseia UMA vez e valida. `null` = ausente ou impossível de ler. */
+function instanteValido(iso: string | null): number | null {
+  if (iso == null) return null;
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? null : ms;
 }
