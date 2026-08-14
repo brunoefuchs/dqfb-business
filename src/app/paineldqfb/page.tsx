@@ -29,6 +29,8 @@ interface SaldoLinha {
   saldo_estimado_brl: number;
   ancora_em: string;
 }
+import { estadoDaCotaEmail } from './cota-email';
+
 interface Custo {
   dias_grafico: number;
   usd_brl: number;
@@ -69,6 +71,17 @@ interface Custo {
   usuaria_mes?: { usuaria: string; email?: string; brl: number; chamadas: number }[];
   // (saldo por provedor) card "Saldo dos provedores" — aditivo; ausente no rollout.
   saldo?: SaldoLinha[];
+  // (Story 12.B4) card "Cota de e-mail". ADITIVO e opcional.
+  // 🔴 AUSENTE significa "NUNCA MEDIDO", e o card mostra isso em vez de inventar 0%.
+  // Um zero sem medição afirma que a cota está ótima sobre número que ninguém apurou —
+  // e foi assim que o monitor do Mailtrap ficou morto por meses sem ninguém notar.
+  mailtrap_quota?: {
+    usados: number;
+    limite: number;
+    pct: number;
+    periodo_fim: string | null;
+    medido_em: string | null;
+  };
 }
 interface Fonte {
   tipo?: string;
@@ -936,6 +949,18 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
   const custoHoje = d.custo_hoje_usd ?? 0;
   const tetoDia = d.teto_usd_dia ?? 0;
   const pctHoje = tetoDia > 0 ? Math.round((custoHoje / tetoDia) * 100) : 0;
+
+  // (Story 12.B4) cota de e-mail do Mailtrap. O card é SEMPRE visível — decisão do dono
+  // em 2026-08-14: "pode aparecer 0% senão não vou ver a barra". Mas os dois estados são
+  // distintos: `mq` ausente = nunca medido; `mq.pct === 0` = zero REAL, medido.
+  // 🔴 A lógica vem de `estadoDaCotaEmail`, o MESMO módulo que os testes exercitam.
+  // A primeira versão calculava tudo aqui e o teste verificava uma cópia — que é o
+  // defeito que a Story 2.19 e a 2.21 cometeram na mesma semana, as duas pegas por
+  // mutação. Mutar o módulo tem que quebrar a tela; se não quebrar, o teste é teatro.
+  const mq = d.mailtrap_quota;
+  const cota = estadoDaCotaEmail(mq);
+  const mqCor =
+    cota.nivel === 'critico' ? '#c0392b' : cota.nivel === 'alerta' ? '#d68910' : undefined;
   return (
     <>
       <div className="pdqfb-kpis">
@@ -1004,6 +1029,56 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
           </small>
         </div>
       ) : null}
+
+      {/* (Story 12.B4) Card "Cota de e-mail": consumo do mês vs limite do Mailtrap. */}
+      <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
+        <h2>Cota de e-mail</h2>
+        <div className="pdqfb-row">
+          <div className="name">
+            {cota.temMedicao ? (
+              <>
+                {mq!.usados.toLocaleString('pt-BR')} de {mq!.limite.toLocaleString('pt-BR')} e-mails
+                no mês
+              </>
+            ) : (
+              /* 🔴 NÃO escrever "0 de 0" nem "0%": ninguém mediu ainda. */
+              <>ainda não medido</>
+            )}
+          </div>
+          <div className="v" style={mqCor ? { color: mqCor } : undefined}>
+            {cota.temMedicao ? `${mq!.pct}%` : '—'}
+          </div>
+        </div>
+        <div className="pdqfb-bar">
+          <span style={{ width: `${cota.larguraPct}%`, ...(mqCor ? { background: mqCor } : {}) }} />
+        </div>
+        <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
+          {cota.temMedicao && mq ? (
+            <>
+              {mq.periodo_fim ? <>Reseta em {fmtData(mq.periodo_fim)}. </> : null}
+              {mq.medido_em ? (
+                <>
+                  Medido em{' '}
+                  {new Date(mq.medido_em).toLocaleString('pt-BR', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                  })}
+                  {cota.velho ? (
+                    <strong style={{ color: '#c0392b' }}>
+                      {' '}— há mais de 48h. A medição é diária: se não atualizar, o cron parou.
+                    </strong>
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          ) : (
+            <>
+              A medição roda 1× por dia, de carona no cron <code>check-sla</code> do CRM. Enquanto
+              não houver a primeira, o card não mostra 0% — um zero sem medição diria que a cota
+              está ótima sobre um número que ninguém apurou.
+            </>
+          )}
+        </small>
+      </div>
 
       <div className="pdqfb-grid">
         <div className="pdqfb-panel">
