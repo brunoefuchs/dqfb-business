@@ -30,6 +30,7 @@ interface SaldoLinha {
   ancora_em: string;
 }
 import { estadoDaCotaEmail } from './cota-email';
+import { estadoDosAparelhos, sinal as sinalAparelho, RESSALVAS as RESSALVAS_APARELHOS } from './aparelhos';
 
 interface Custo {
   dias_grafico: number;
@@ -82,6 +83,18 @@ interface Custo {
     periodo_fim: string | null;
     medido_em: string | null;
   };
+  // (Story 12.B5) contas com 2+ aparelhos. ADITIVO e opcional.
+  // ⛔ Mostrar não é limitar: nada aqui restringe acesso de ninguém.
+  aparelhos_resumo?: {
+    perfil_id: string;
+    nome: string;
+    aparelhos: number;
+    ativos_30d: number;
+    novos_12m: number;
+    redes_distintas: number;
+    plataformas: string;
+    ultimo_acesso: string | null;
+  }[];
 }
 interface Fonte {
   tipo?: string;
@@ -961,6 +974,10 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
   const cota = estadoDaCotaEmail(mq);
   const mqCor =
     cota.nivel === 'critico' ? '#c0392b' : cota.nivel === 'alerta' ? '#d68910' : undefined;
+
+  // (Story 12.B5) A lógica vem de `./aparelhos`, o MESMO módulo que os testes exercitam —
+  // não uma cópia. Mutar o módulo tem que quebrar a tela.
+  const aparelhos = estadoDosAparelhos(d.aparelhos_resumo);
   return (
     <>
       <div className="pdqfb-kpis">
@@ -1077,6 +1094,64 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
               está ótima sobre um número que ninguém apurou.
             </>
           )}
+        </small>
+      </div>
+
+      {/* (Story 12.B5) Card "Aparelhos por conta" — o leitor que faltava para a tabela
+          que a Story 2.23 grava. ⛔ Mostra, não limita. */}
+      <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
+        <h2>Aparelhos por conta</h2>
+        {aparelhos.temDado ? (
+          <>
+            {aparelhos.linhas.map((l) => (
+              <div key={l.perfil_id}>
+                <div className="pdqfb-row">
+                  <div className="name">
+                    {l.nome}{' '}
+                    <small>
+                      {l.ativos_30d} ativo{l.ativos_30d === 1 ? '' : 's'} nos últimos 30 dias ·{' '}
+                      {l.redes_distintas} rede{l.redes_distintas === 1 ? '' : 's'} · {l.plataformas}
+                      {l.novos_12m > 0 ? ` · ${l.novos_12m} novo(s) em 12 meses` : ''}
+                    </small>
+                  </div>
+                  <div
+                    className="v"
+                    style={sinalAparelho(l) === 'olhar' ? { color: '#d68910' } : undefined}
+                  >
+                    {l.aparelhos}
+                  </div>
+                </div>
+                <div className="pdqfb-bar">
+                  <span
+                    style={{
+                      width: `${Math.round((l.aparelhos / aparelhos.maxAparelhos) * 100)}%`,
+                      ...(sinalAparelho(l) === 'olhar' ? { background: '#d68910' } : {}),
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </>
+        ) : (
+          /* 🔴 Sem dado, diz que não há — não inventa lista vazia com cara de "ninguém
+             compartilha". A tabela só se enche depois que o app publicar. */
+          <div className="pdqfb-row">
+            <div className="name">nenhuma conta com mais de um aparelho registrado</div>
+            <div className="v">—</div>
+          </div>
+        )}
+        <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
+          {/* 🔴 AS DUAS ressalvas, sempre. São vieses em direções OPOSTAS: mostrar só uma
+              sugere uma precisão que o número não tem. */}
+          {RESSALVAS_APARELHOS.map((r, i) => (
+            <span key={i} style={{ display: 'block' }}>
+              ⚠️ {r}
+            </span>
+          ))}
+          <span style={{ display: 'block', marginTop: 4 }}>
+            Este quadro <strong>não limita nada</strong> — nenhum acesso é bloqueado por
+            causa dele.
+          </span>
         </small>
       </div>
 
