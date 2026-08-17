@@ -29,7 +29,7 @@ interface SaldoLinha {
   saldo_estimado_brl: number;
   ancora_em: string;
 }
-import { estadoDaCotaEmail } from './cota-email';
+import { estadoDaCotaEmail, estadoDoMarketing } from './cota-email';
 import {
   estadoDosAparelhos,
   rotuloSinal as rotuloSinalAparelho,
@@ -83,10 +83,17 @@ interface Custo {
   // 🔴 AUSENTE significa "NUNCA MEDIDO", e o card mostra isso em vez de inventar 0%.
   // Um zero sem medição afirma que a cota está ótima sobre número que ninguém apurou —
   // e foi assim que o monitor do Mailtrap ficou morto por meses sem ninguém notar.
+  // 🔴 Os campos `mkt_*` são NULL-áveis, não opcionais: a linha existe e pode não ter
+  // olhado o balde de marketing. `null` = não medido, e é diferente de 0 — um 0% aqui
+  // afirmaria folga total sobre número que ninguém apurou.
+  // ⚠️ NUNCA somar `pct` com `mkt_pct`: baldes independentes (4.000 vs 1.500 no Free).
   mailtrap_quota?: {
     usados: number;
     limite: number;
     pct: number;
+    mkt_usados: number | null;
+    mkt_limite: number | null;
+    mkt_pct: number | null;
     periodo_fim: string | null;
     medido_em: string | null;
   };
@@ -981,6 +988,11 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
   const cota = estadoDaCotaEmail(mq);
   const mqCor =
     cota.nivel === 'critico' ? '#c0392b' : cota.nivel === 'alerta' ? '#d68910' : undefined;
+  // Segundo balde: MARKETING. Mesmo módulo, mesma régua, fonte diferente — e NUNCA
+  // somado ao de cima. No plano Free são 1.500/mês contra 4.000 do transacional.
+  const mkt = estadoDoMarketing(mq);
+  const mktCor =
+    mkt.nivel === 'critico' ? '#c0392b' : mkt.nivel === 'alerta' ? '#d68910' : undefined;
 
   // (Story 12.B5) A lógica vem de `./aparelhos`, o MESMO módulo que os testes exercitam —
   // não uma cópia. Mutar o módulo tem que quebrar a tela.
@@ -1061,8 +1073,11 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
           <div className="name">
             {cota.temMedicao ? (
               <>
+                {/* "do app" e não "transacional": quem lê este painel não precisa saber
+                    o jargão do Mailtrap. São os e-mails que o produto dispara — código
+                    de login, avisos, boas-vindas. */}
                 {mq!.usados.toLocaleString('pt-BR')} de {mq!.limite.toLocaleString('pt-BR')} e-mails
-                no mês
+                do app no mês
               </>
             ) : (
               /* 🔴 NÃO escrever "0 de 0" nem "0%": ninguém mediu ainda. */
@@ -1076,6 +1091,32 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
         <div className="pdqfb-bar">
           <span style={{ width: `${cota.larguraPct}%`, ...(mqCor ? { background: mqCor } : {}) }} />
         </div>
+
+        {/* Segundo balde: MARKETING (campanhas). Barra própria, NUNCA somada à de cima —
+            são limites independentes, e a soma de dois percentuais com denominadores
+            diferentes não significa nada. */}
+        <div className="pdqfb-row" style={{ marginTop: 14 }}>
+          <div className="name">
+            {mkt.temMedicao ? (
+              <>
+                {mq!.mkt_usados!.toLocaleString('pt-BR')} de{' '}
+                {mq!.mkt_limite!.toLocaleString('pt-BR')} e-mails de marketing
+              </>
+            ) : (
+              /* 🔴 Mesma regra do balde de cima: sem medição não se escreve "0 de 0"
+                 nem "0%". Aqui isso acontece inclusive quando a linha EXISTE — uma
+                 medição anterior a este campo simplesmente não olhou o marketing. */
+              <>marketing ainda não medido</>
+            )}
+          </div>
+          <div className="v" style={mktCor ? { color: mktCor } : undefined}>
+            {mkt.temMedicao ? `${mq!.mkt_pct}%` : '—'}
+          </div>
+        </div>
+        <div className="pdqfb-bar">
+          <span style={{ width: `${mkt.larguraPct}%`, ...(mktCor ? { background: mktCor } : {}) }} />
+        </div>
+
         <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
           {cota.temMedicao && mq ? (
             <>

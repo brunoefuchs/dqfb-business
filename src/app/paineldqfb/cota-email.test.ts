@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   estadoDaCotaEmail,
+  estadoDoMarketing,
   LIMIAR_ALERTA,
   LIMIAR_CRITICO,
   type CotaEmail,
@@ -22,6 +23,12 @@ function medicao(over: Partial<CotaEmail> = {}): CotaEmail {
     usados: 9000,
     limite: 200000,
     pct: 4.5,
+    // Default `null` de propósito: o padrão de uma medição é NÃO ter olhado o balde
+    // de marketing (toda linha anterior à migration 0096 do CRM está assim). Quem
+    // testa o marketing passa os valores explicitamente.
+    mkt_usados: null,
+    mkt_limite: null,
+    mkt_pct: null,
     periodo_fim: '2026-08-31',
     medido_em: '2026-08-14T11:00:00Z',
     ...over,
@@ -120,5 +127,56 @@ describe('a barra não escapa da caixa', () => {
   it('pct negativo ou NaN não vira largura inválida', () => {
     expect(estadoDaCotaEmail(medicao({ pct: -5 }), AGORA).larguraPct).toBe(0);
     expect(estadoDaCotaEmail(medicao({ pct: Number.NaN }), AGORA).larguraPct).toBe(0);
+  });
+});
+
+// ── Segundo balde: MARKETING (17/08/2026) ────────────────────────────────────
+//
+// O Mailtrap tem limites INDEPENDENTES: no plano Free, 1.500 e-mails/mês de
+// marketing contra 4.000 do transacional. O card mostrava só um e passava uma
+// sensação de folga que não valia para o outro.
+//
+// ⚠️ Os dois nunca se somam — a soma de percentuais com denominadores diferentes
+// não significa nada.
+
+describe('estadoDoMarketing — três estados, não dois', () => {
+  it('sem linha nenhuma → sem_medicao', () => {
+    expect(estadoDoMarketing(undefined, AGORA).temMedicao).toBe(false);
+    expect(estadoDoMarketing(null, AGORA).nivel).toBe('sem_medicao');
+  });
+
+  it('🔴 linha EXISTE mas mkt_pct é null → sem_medicao', () => {
+    // O estado que só o marketing tem, e o mais fácil de errar: a medição aconteceu
+    // (o transacional está lá), mas aquele tique não olhou este balde — toda linha
+    // anterior à migration 0096 do CRM está assim.
+    //
+    // Se isto virasse `temMedicao: true`, o card mostraria 0% e afirmaria folga total
+    // sobre um número que a API nunca devolveu.
+    const e = estadoDoMarketing(medicao({ mkt_pct: null, mkt_usados: null, mkt_limite: null }), AGORA);
+    expect(e.temMedicao).toBe(false);
+    expect(e.larguraPct).toBe(0);
+    expect(e.nivel).toBe('sem_medicao');
+  });
+
+  it('mkt_pct === 0 é zero MEDIDO — o card mostra 0%', () => {
+    // O par do teste acima. Sem ele, devolver sem_medicao sempre também passaria, e o
+    // marcador de marketing nunca apareceria nem quando existe.
+    const e = estadoDoMarketing(medicao({ mkt_pct: 0, mkt_usados: 0, mkt_limite: 1500 }), AGORA);
+    expect(e.temMedicao).toBe(true);
+    expect(e.larguraPct).toBe(0);
+    expect(e.nivel).toBe('ok');
+  });
+
+  it('usa os limiares do marketing, não os do transacional', () => {
+    // A medição tem pct 4.5 (transacional, ok) e mkt_pct 96 (marketing, crítico).
+    // Se a função lesse o campo errado, o card pintaria a barra errada de vermelho.
+    const m = medicao({ pct: 4.5, mkt_pct: 96, mkt_usados: 1440, mkt_limite: 1500 });
+    expect(estadoDaCotaEmail(m, AGORA).nivel).toBe('ok');
+    expect(estadoDoMarketing(m, AGORA).nivel).toBe('critico');
+  });
+
+  it('satura em 100 e não aceita NaN, igual ao balde de cima', () => {
+    expect(estadoDoMarketing(medicao({ mkt_pct: 130 }), AGORA).larguraPct).toBe(100);
+    expect(estadoDoMarketing(medicao({ mkt_pct: Number.NaN }), AGORA).temMedicao).toBe(false);
   });
 });
