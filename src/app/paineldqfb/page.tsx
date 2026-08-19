@@ -30,6 +30,7 @@ interface SaldoLinha {
   ancora_em: string;
 }
 import { estadoDaCotaEmail, estadoDoMarketing } from './cota-email';
+import { estadoDoRegistroLegal, type SinalRegistroLegal } from './registro-legal';
 import {
   estadoDosAparelhos,
   rotuloSinal as rotuloSinalAparelho,
@@ -99,6 +100,15 @@ interface Custo {
   };
   // (Story 12.B5) contas com 2+ aparelhos. ADITIVO e opcional.
   // ⛔ Mostrar não é limitar: nada aqui restringe acesso de ninguém.
+  // (Story 2.27 / T10) card "Registro legal de acesso". ADITIVO e opcional.
+  // 🔴 AUSENTE = nada apurado, e o card diz isso em vez de mostrar tudo verde. `aceso`
+  // NULL-ável de propósito: sinal que não respondeu não é sinal apagado.
+  // ⛔ O limiar de cada sinal mora no SERVIDOR — este repositório é público, e uma
+  // segunda cópia da régua divergiria da primeira sem ninguém notar.
+  // 🔴 O TIPO VEM DO MÓDULO, não é copiado aqui. Duas declarações da mesma forma divergem
+  // sem ninguém notar — e a que a tela usa venceria em silêncio.
+  registro_legal?: SinalRegistroLegal[];
+  registro_legal_erro?: string | null;
   aparelhos_resumo?: {
     perfil_id: string;
     nome: string;
@@ -993,6 +1003,9 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
   const mkt = estadoDoMarketing(mq);
   const mktCor =
     mkt.nivel === 'critico' ? '#c0392b' : mkt.nivel === 'alerta' ? '#d68910' : undefined;
+  // (Story 2.27 / T10) saúde do registro legal de acesso. Mesma disciplina dos cards
+  // vizinhos: o módulo decide, a tela pinta — e mutar o módulo tem de quebrar a tela.
+  const regLegal = estadoDoRegistroLegal(d.registro_legal);
 
   // (Story 12.B5) A lógica vem de `./aparelhos`, o MESMO módulo que os testes exercitam —
   // não uma cópia. Mutar o módulo tem que quebrar a tela.
@@ -1147,6 +1160,69 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
             </>
           )}
         </small>
+      </div>
+
+      {/* (Story 2.27 / T10) Card "Registro legal de acesso".
+          🔴 Este card É a resposta a "grava e ninguém lê": a story constrói um registro que
+          a lei exige, e sem uma superfície de leitura ele seria um controle que existe só
+          no relato. O primeiro sinal é "a gravação está ligada" de propósito — antes dele,
+          "ninguém foi capturado" e "tudo perfeito" tinham a mesma cor.
+          ⛔ Nada aqui decide se um sinal acende: o servidor entrega `aceso` resolvido. */}
+      <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
+        <h2>Registro legal de acesso</h2>
+        {regLegal.temMedicao ? (
+          <>
+            {regLegal.linhas.map((l) => (
+              <div className="pdqfb-row" key={l.sinal}>
+                <div className="name">
+                  {l.rotulo}
+                  {l.numero != null ? <> · {l.numero.toLocaleString('pt-BR')}</> : null}
+                </div>
+                <div
+                  className="v"
+                  style={
+                    l.aceso === true
+                      ? { color: '#c0392b' }
+                      : l.aceso === null
+                        /* 🔴 Mais escuro que o `#d68910` do card vizinho, e de propósito:
+                           lá ele pinta um NÚMERO grande ao lado de uma barra; aqui pinta
+                           uma PALAVRA pequena, que a 4,5:1 do AA alcança e a do vizinho
+                           não. Mesma família de cor, contraste de texto. */
+                        ? { color: '#8a5a18' }
+                        : undefined
+                  }
+                  /* 🔴 Três estados, nunca dois: aceso · apagado · SEM RESPOSTA.
+                     Um sinal que não respondeu virando "ok" é o zero inventado
+                     com outra roupa. */
+                  title={l.limiar ?? undefined}
+                >
+                  {l.aceso === true ? 'atenção' : l.aceso === null ? 'sem resposta' : 'ok'}
+                </div>
+              </div>
+            ))}
+            <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
+              {regLegal.acesos === 0 && regLegal.indefinidos === 0 ? (
+                <>Nenhum sinal aceso. Passe o mouse em cada linha para ver o que a acenderia.</>
+              ) : (
+                <strong style={{ color: '#c0392b' }}>
+                  {regLegal.acesos > 0 ? <>{regLegal.acesos} sinal(is) pedindo atenção. </> : null}
+                  {regLegal.indefinidos > 0 ? (
+                    <>{regLegal.indefinidos} sem resposta — enquanto isso, os números ao lado não valem. </>
+                  ) : null}
+                </strong>
+              )}
+            </small>
+          </>
+        ) : (
+          <small style={{ display: 'block', color: 'var(--ink-3)' }}>
+            {/* 🔴 NUNCA escrever "tudo certo" aqui: ninguém apurou ainda. Um card verde
+                sem medição afirma conformidade sobre algo que não foi verificado — e é
+                justamente o que este card existe para não deixar acontecer. */}
+            {d.registro_legal_erro
+              ? <>a leitura falhou ({d.registro_legal_erro}) — o card não afirma nada enquanto isso</>
+              : <>ainda não medido</>}
+          </small>
+        )}
       </div>
 
       {/* (Story 12.B5) Card "Aparelhos por conta" — o leitor que faltava para a tabela

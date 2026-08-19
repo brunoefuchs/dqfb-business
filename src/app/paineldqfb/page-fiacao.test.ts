@@ -36,6 +36,26 @@ describe('a tela chama os módulos, não uma cópia', () => {
     expect(PAGE).toContain('nenhuma conta com mais de um aparelho registrado');
   });
 
+  it('(2.27/T10) o card do registro legal usa `estadoDoRegistroLegal`, não uma cópia', () => {
+    expect(PAGE).toContain("estadoDoRegistroLegal(d.registro_legal)");
+    // e a lista renderizada vem do módulo — não de `d.registro_legal` direto, que é o
+    // caminho pelo qual a régua voltaria a ser recalculada aqui dentro
+    expect(PAGE).toMatch(/regLegal\.linhas\.map\(/);
+  });
+
+  it('🔴 (2.27/T10) o card distingue os TRÊS estados de um sinal', () => {
+    // aceso · apagado · SEM RESPOSTA. Se `l.aceso === null` sumir daqui, um sinal que
+    // não respondeu volta a sair como "ok" — o zero inventado com outra roupa.
+    expect(PAGE).toMatch(/l\.aceso === true[\s\S]{0,200}l\.aceso === null/);
+    expect(PAGE).toContain('sem resposta');
+  });
+
+  it('🔴 (2.27/T10) o card NUNCA escreve "tudo certo" sem medição', () => {
+    // O ramo sem medição só pode dizer "ainda não medido" ou nomear a falha de leitura.
+    expect(PAGE).toContain('registro_legal_erro');
+    expect(PAGE).not.toMatch(/registro legal[\s\S]{0,600}tudo certo/i);
+  });
+
   it('o rótulo do sinal vem de `rotuloSinal` E é de fato renderizado', () => {
     // 🔴 Não basta a chamada existir em algum lugar do arquivo: o primeiro mutante
     // ("{false ? (" no lugar da condição) sobreviveu porque a chamada continuava escrita
