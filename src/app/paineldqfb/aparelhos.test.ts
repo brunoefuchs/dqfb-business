@@ -10,6 +10,7 @@ import {
   sinal,
   LEGENDA_OLHAR,
   RESSALVAS,
+  parDeAparelhos,
   type AparelhoLinha,
 } from './aparelhos';
 
@@ -128,5 +129,39 @@ describe('maxAparelhos escala as barras', () => {
 
   it('nunca zero — divisão por zero quebraria a barra', () => {
     expect(estadoDosAparelhos([linha({ aparelhos: 0 })]).maxAparelhos).toBe(1);
+  });
+});
+
+
+describe('(2.45) o número que JULGA é o confirmado, não o bruto', () => {
+  it('🔴 3 registrados, 1 confirmado → julga por 1', () => {
+    // O caso real do dono, medido em 24/08: 3 registros, 2 celulares — duas linhas são a
+    // MESMA Samsung reinstalada. Na régua dele ("acima de 3 preocupa"), julgar pelo bruto
+    // faria o painel acusar quem só reinstalou o app.
+    const p = parDeAparelhos(linha({ aparelhos: 3, aparelhos_confirmados: 1 }));
+    expect(p.julga).toBe(1);
+    expect(p.bruto).toBe(3);
+    expect(p.incerto).toBe(false);
+  });
+
+  it('🔴 coluna AUSENTE não vira zero — cai no bruto e AVISA', () => {
+    // Janela em que a edge subiu antes da migration. Zero silencioso aqui diria
+    // "esta conta não tem aparelho confirmado", que é afirmação, não ausência.
+    const p = parDeAparelhos(linha({ aparelhos: 4, aparelhos_confirmados: null }));
+    expect(p.julga).toBe(4);
+    expect(p.incerto).toBe(true);
+  });
+
+  it('campo nem presente no objeto → mesmo tratamento de ausente', () => {
+    const p = parDeAparelhos(linha({ aparelhos: 2 }));
+    expect(p.incerto).toBe(true);
+  });
+
+  it('controle positivo: zero confirmado DE VERDADE é 0, e não é incerto', () => {
+    // Sem este, "ausente vira bruto" seria satisfeito por devolver bruto SEMPRE —
+    // inclusive para quem tem 0 confirmados de fato, que é informação diferente.
+    const p = parDeAparelhos(linha({ aparelhos: 3, aparelhos_confirmados: 0 }));
+    expect(p.julga).toBe(0);
+    expect(p.incerto).toBe(false);
   });
 });

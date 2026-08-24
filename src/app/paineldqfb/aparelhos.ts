@@ -11,6 +11,13 @@ export type AparelhoLinha = {
   perfil_id: string;
   nome: string;
   aparelhos: number;
+  /**
+   * (Story 2.45) Aparelhos vistos em DOIS DIAS distintos, no relógio de Brasília.
+   *
+   * 🔴 `null` = a coluna não veio (edge publicada antes da migration). NÃO é zero — a
+   * distinção existe porque "0 confirmados" e "não sei" levam a decisões opostas.
+   */
+  aparelhos_confirmados?: number | null;
   ativos_30d: number;
   novos_12m: number;
   redes_distintas: number;
@@ -31,7 +38,7 @@ export type AparelhoLinha = {
  * na mesma?". Cairiam — operadora móvel divide um IP público entre milhares de assinantes.
  */
 export const RESSALVAS = [
-  'Reinstalar o app zera o identificador do aparelho — reinstalação aparece como aparelho novo. Este número SUPERESTIMA aparelhos e trocas.',
+  'Reinstalar o app zera o identificador do aparelho (Android) — reinstalação aparece como aparelho novo. O número CONFIRMADO desconta a maior parte disso: só conta aparelho que voltou em outro dia. O número entre parênteses é o bruto, que SUPERESTIMA.',
   'Em rede móvel (4G), operadoras usam CGNAT: pessoas diferentes saem com o mesmo código de rede. "Redes distintas" SUBESTIMA compartilhamento em quem usa celular.',
 ] as const;
 
@@ -118,3 +125,29 @@ export function rotuloSinal(l: AparelhoLinha): string | null {
 /** O que "Olhar" quer dizer — vai na tela junto das RESSALVAS, não escondido no código. */
 export const LEGENDA_OLHAR =
   '"Olhar" marca conta com 3+ aparelhos ativos vindo de 3+ redes distintas. Não é veredito: com CGNAT, várias redes pode ser só gente usando 4G.';
+
+
+/**
+ * (Story 2.45) O par que vai na tela: quantos aparelhos a conta tem DE VERDADE, e quantos
+ * foram registrados.
+ *
+ * 🔴 **Por que o confirmado é o número que julga.** A régua do dono é "até 3 normal, acima
+ * de 3 preocupa" (24/08/2026). Lida sobre o número BRUTO, ela dispara em quem só
+ * reinstalou o app — medido no próprio perfil dele: 3 registros, 2 celulares. Ele seria o
+ * primeiro falso alarme do próprio painel.
+ *
+ * ⚠️ O bruto NÃO some: os dois juntos contam a história ("1 de 3" diz que duas sumiram, e
+ * isso é informação). Mostrar só o confirmado esconderia a reinstalação.
+ *
+ * 🔵 `confirmados == null` ⇒ devolve o bruto com `incerto: true`. É a janela em que a edge
+ * subiu antes da migration; a tela mostra o bruto e AVISA, em vez de inventar um zero.
+ */
+export function parDeAparelhos(l: AparelhoLinha): {
+  julga: number;
+  bruto: number;
+  incerto: boolean;
+} {
+  const c = l.aparelhos_confirmados;
+  if (c == null) return { julga: l.aparelhos, bruto: l.aparelhos, incerto: true };
+  return { julga: c, bruto: l.aparelhos, incerto: false };
+}

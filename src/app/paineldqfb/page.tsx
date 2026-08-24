@@ -37,6 +37,7 @@ import {
   sinal as sinalAparelho,
   RESSALVAS as RESSALVAS_APARELHOS,
   LEGENDA_OLHAR,
+  parDeAparelhos,
 } from './aparelhos';
 import { fmtDataBr } from './data-br';
 
@@ -1237,7 +1238,10 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
                   <div className="name">
                     {l.nome}{' '}
                     <small>
-                      {l.ativos_30d} ativo{l.ativos_30d === 1 ? '' : 's'} nos últimos 30 dias ·{' '}
+                      {parDeAparelhos(l).incerto
+                        ? 'confirmados: ainda não apurado'
+                        : `${parDeAparelhos(l).bruto} registrado${parDeAparelhos(l).bruto === 1 ? '' : 's'}`}{' '}
+                      · {l.ativos_30d} ativo{l.ativos_30d === 1 ? '' : 's'} nos últimos 30 dias ·{' '}
                       {l.redes_distintas} rede{l.redes_distintas === 1 ? '' : 's'} · {l.plataformas}
                       {l.novos_12m > 0 ? ` · ${l.novos_12m} novo(s) em 12 meses` : ''}
                     </small>
@@ -1254,13 +1258,13 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
                         {rotuloSinalAparelho(l)}
                       </small>
                     ) : null}
-                    {l.aparelhos}
+                    {parDeAparelhos(l).julga}
                   </div>
                 </div>
                 <div className="pdqfb-bar">
                   <span
                     style={{
-                      width: `${Math.round((l.aparelhos / aparelhos.maxAparelhos) * 100)}%`,
+                      width: `${Math.round((parDeAparelhos(l).julga / aparelhos.maxAparelhos) * 100)}%`,
                       ...(sinalAparelho(l) === 'olhar' ? { background: '#d68910' } : {}),
                     }}
                   />
