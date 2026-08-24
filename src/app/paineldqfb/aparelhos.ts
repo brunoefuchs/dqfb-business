@@ -38,7 +38,9 @@ export type AparelhoLinha = {
  * na mesma?". Cairiam — operadora móvel divide um IP público entre milhares de assinantes.
  */
 export const RESSALVAS = [
-  'Reinstalar o app zera o identificador do aparelho (Android) — reinstalação aparece como aparelho novo. O número CONFIRMADO desconta a maior parte disso: só conta aparelho que voltou em outro dia. O número entre parênteses é o bruto, que SUPERESTIMA.',
+  'O número grande conta INSTALAÇÕES distintas. Reinstalar o app (Android) zera o identificador, então reinstalação aparece como aparelho novo — este número SUPERESTIMA.',
+  'O "confirmado" ao lado só conta aparelho que voltou em outro dia. Ele SUBESTIMA: aparelho que existe mas é pouco usado não entra. Medido em 24/08 na conta do dono — 3 aparelhos reais, 1 confirmado.',
+  'A verdade está ENTRE os dois números. Nenhum dos dois sozinho é a contagem certa.',
   'Em rede móvel (4G), operadoras usam CGNAT: pessoas diferentes saem com o mesmo código de rede. "Redes distintas" SUBESTIMA compartilhamento em quem usa celular.',
 ] as const;
 
@@ -131,23 +133,34 @@ export const LEGENDA_OLHAR =
  * (Story 2.45) O par que vai na tela: quantos aparelhos a conta tem DE VERDADE, e quantos
  * foram registrados.
  *
- * 🔴 **Por que o confirmado é o número que julga.** A régua do dono é "até 3 normal, acima
- * de 3 preocupa" (24/08/2026). Lida sobre o número BRUTO, ela dispara em quem só
- * reinstalou o app — medido no próprio perfil dele: 3 registros, 2 celulares. Ele seria o
- * primeiro falso alarme do próprio painel.
+ * 🔴 **O BRUTO é quem julga, e isso foi um conserto — a primeira versão errou.**
  *
- * ⚠️ O bruto NÃO some: os dois juntos contam a história ("1 de 3" diz que duas sumiram, e
- * isso é informação). Mostrar só o confirmado esconderia a reinstalação.
+ * Eu tinha posto o CONFIRMADO como número principal, com o argumento de que a régua do dono
+ * ("até 3 normal, acima de 3 preocupa") dispararia em quem só reinstalou. **O dono derrubou
+ * na primeira leitura, em 24/08:** os 3 registros dele são **3 aparelhos DIFERENTES**, e o
+ * app tinha até avisado por e-mail nos dois novos (`app.aviso_aparelho`, 17/08 11:53 e
+ * 13:44). A regra dos 2 dias descartou 2 dos 3 — porque ele instalou e não voltou a abrir.
  *
- * 🔵 `confirmados == null` ⇒ devolve o bruto com `incerto: true`. É a janela em que a edge
- * subiu antes da migration; a tela mostra o bruto e AVISA, em vez de inventar um zero.
+ * A suposição "aparelho de verdade volta noutro dia" **é falsa para aparelho pouco usado**.
+ *
+ * ⚠️ E o erro de raciocínio por trás: subestimar é o lado seguro de quem **bloqueia**, não
+ * de quem **monitora**. O dono disse "sem bloqueio, só monitorar" — e para monitorar,
+ * esconder é pior que inflar. Com o confirmado como principal, quem instala em 10 celulares
+ * e usa pouco aparece como **1**.
+ *
+ * ⚠️ Nenhum dos dois é a verdade: o bruto infla com reinstalação, o confirmado esconde uso
+ * esparso. **A verdade está entre eles**, e o dado de hoje não diz onde. Por isso os dois
+ * vão na tela.
+ *
+ * 🔵 `confirmados == null` ⇒ `incerto: true`. É a janela em que a edge subiu antes da
+ * migration; a tela avisa em vez de inventar um zero.
  */
 export function parDeAparelhos(l: AparelhoLinha): {
   julga: number;
-  bruto: number;
+  confirmados: number | null;
   incerto: boolean;
 } {
   const c = l.aparelhos_confirmados;
-  if (c == null) return { julga: l.aparelhos, bruto: l.aparelhos, incerto: true };
-  return { julga: c, bruto: l.aparelhos, incerto: false };
+  // 🔴 O número que JULGA é o BRUTO — instalações distintas, que é o que de fato sabemos.
+  return { julga: l.aparelhos, confirmados: c ?? null, incerto: c == null };
 }

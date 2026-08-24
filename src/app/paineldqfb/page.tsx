@@ -1240,7 +1240,7 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
                     <small>
                       {parDeAparelhos(l).incerto
                         ? 'confirmados: ainda não apurado'
-                        : `${parDeAparelhos(l).bruto} registrado${parDeAparelhos(l).bruto === 1 ? '' : 's'}`}{' '}
+                        : `${parDeAparelhos(l).confirmados} confirmado${parDeAparelhos(l).confirmados === 1 ? '' : 's'} (voltaram em outro dia)`}{' '}
                       · {l.ativos_30d} ativo{l.ativos_30d === 1 ? '' : 's'} nos últimos 30 dias ·{' '}
                       {l.redes_distintas} rede{l.redes_distintas === 1 ? '' : 's'} · {l.plataformas}
                       {l.novos_12m > 0 ? ` · ${l.novos_12m} novo(s) em 12 meses` : ''}

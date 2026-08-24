@@ -86,9 +86,13 @@ describe('🔴 o rótulo do sinal é TEXTO — cor não pode ser o único portad
   });
 });
 
-describe('AC-2 — 🔴 as DUAS ressalvas existem e são opostas', () => {
-  it('são exatamente duas', () => {
-    expect(RESSALVAS).toHaveLength(2);
+describe('AC-2 — 🔴 as ressalvas existem e apontam para lados OPOSTOS', () => {
+  // 🔵 Este teste afirmava `toHaveLength(2)`. Passou a 4 em 24/08, quando o número
+  // confirmado entrou e trouxe o viés dele. Contar itens era âncora frágil: a intenção do
+  // AC-2 nunca foi "duas frases", foi "os dois lados do erro na tela". A contagem virou
+  // piso — mais ressalva não é regressão, ressalva a menos é.
+  it('não regride: pelo menos as duas direções continuam declaradas', () => {
+    expect(RESSALVAS.length).toBeGreaterThanOrEqual(2);
   });
 
   it('uma diz SUPERESTIMA e a outra SUBESTIMA — vieses opostos', () => {
@@ -133,35 +137,49 @@ describe('maxAparelhos escala as barras', () => {
 });
 
 
-describe('(2.45) o número que JULGA é o confirmado, não o bruto', () => {
-  it('🔴 3 registrados, 1 confirmado → julga por 1', () => {
-    // O caso real do dono, medido em 24/08: 3 registros, 2 celulares — duas linhas são a
-    // MESMA Samsung reinstalada. Na régua dele ("acima de 3 preocupa"), julgar pelo bruto
-    // faria o painel acusar quem só reinstalou o app.
+describe('(2.45) o número que JULGA é o BRUTO — o confirmado é contexto', () => {
+  it('🔴 3 instalações, 1 confirmado → julga por 3', () => {
+    // O caso REAL do dono, e ele derrubou a primeira versão: os 3 registros dele são 3
+    // aparelhos DIFERENTES (o app até avisou por e-mail nos dois novos). A regra dos 2 dias
+    // descartava 2 — porque ele instalou e não voltou a abrir.
     const p = parDeAparelhos(linha({ aparelhos: 3, aparelhos_confirmados: 1 }));
-    expect(p.julga).toBe(1);
-    expect(p.bruto).toBe(3);
+    expect(p.julga).toBe(3);
+    expect(p.confirmados).toBe(1);
     expect(p.incerto).toBe(false);
   });
 
-  it('🔴 coluna AUSENTE não vira zero — cai no bruto e AVISA', () => {
-    // Janela em que a edge subiu antes da migration. Zero silencioso aqui diria
-    // "esta conta não tem aparelho confirmado", que é afirmação, não ausência.
+  it('🔴 esconder é pior que inflar quando se MONITORA', () => {
+    // Quem instala em 10 celulares e usa pouco: pelo confirmado apareceria como 1, e o
+    // painel esconderia exatamente o que o dono quer ver. Ele disse "sem bloqueio, só
+    // monitorar" — subestimar é o lado seguro de quem BLOQUEIA, não de quem OLHA.
+    const p = parDeAparelhos(linha({ aparelhos: 10, aparelhos_confirmados: 1 }));
+    expect(p.julga).toBe(10);
+  });
+
+  it('coluna AUSENTE → julga pelo bruto e AVISA, sem inventar zero', () => {
     const p = parDeAparelhos(linha({ aparelhos: 4, aparelhos_confirmados: null }));
     expect(p.julga).toBe(4);
+    expect(p.confirmados).toBeNull();
     expect(p.incerto).toBe(true);
   });
 
-  it('campo nem presente no objeto → mesmo tratamento de ausente', () => {
-    const p = parDeAparelhos(linha({ aparelhos: 2 }));
-    expect(p.incerto).toBe(true);
-  });
-
-  it('controle positivo: zero confirmado DE VERDADE é 0, e não é incerto', () => {
-    // Sem este, "ausente vira bruto" seria satisfeito por devolver bruto SEMPRE —
-    // inclusive para quem tem 0 confirmados de fato, que é informação diferente.
+  it('controle positivo: zero confirmado DE VERDADE é 0, e NÃO é incerto', () => {
+    // Sem este, "ausente vira null" seria satisfeito devolvendo null sempre — inclusive
+    // para quem tem 0 confirmados de fato, que é informação diferente de "não sei".
     const p = parDeAparelhos(linha({ aparelhos: 3, aparelhos_confirmados: 0 }));
-    expect(p.julga).toBe(0);
+    expect(p.confirmados).toBe(0);
     expect(p.incerto).toBe(false);
+  });
+});
+
+
+describe('(2.45) as ressalvas cobrem os DOIS vieses do par de números', () => {
+  it('🔴 o viés do confirmado está declarado — ele SUBESTIMA uso esparso', () => {
+    // Sem esta frase, quem lê "1 confirmado" conclui "tem 1 aparelho". O dono tinha 3.
+    expect(RESSALVAS.some((r) => r.includes('pouco usado'))).toBe(true);
+  });
+
+  it('🔴 e a tela diz que NENHUM dos dois é a verdade', () => {
+    expect(RESSALVAS.some((r) => r.includes('ENTRE os dois'))).toBe(true);
   });
 });
