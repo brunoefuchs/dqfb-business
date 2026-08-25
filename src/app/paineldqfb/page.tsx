@@ -39,6 +39,14 @@ import {
   LEGENDA_OLHAR,
   parDeAparelhos,
 } from './aparelhos';
+import {
+  estadoDasSessoes,
+  sinalSessao,
+  rotuloSinalSessao,
+  textoPlataformas,
+  RESSALVAS_SESSOES,
+  LEGENDA_OLHAR_SESSAO,
+} from './sessoes';
 import { fmtDataBr } from './data-br';
 
 interface Custo {
@@ -119,6 +127,20 @@ interface Custo {
     redes_distintas: number;
     plataformas: string;
     ultimo_acesso: string | null;
+    /* (2.50) um item por aparelho — repetição é ESPERADA, e o nome não identifica. */
+    modelos?: string | null;
+    /* (2.45) vistos em 2 dias distintos, relógio de Brasília. `null` = coluna não veio. */
+    aparelhos_confirmados?: number | null;
+  }[];
+  /* (2.52) contas com sessões de login VIVAS ao mesmo tempo. Card IRMÃO, outra pergunta. */
+  sessoes_simultaneas?: {
+    perfil_id: string;
+    nome: string;
+    sessoes_na_janela: number | null;
+    plataformas_vivas: string | null;
+    cruza_plataforma: boolean | null;
+    menor_intervalo_segundos: number | null;
+    ultima_atividade: string | null;
   }[];
 }
 interface Fonte {
@@ -1011,6 +1033,7 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
   // (Story 12.B5) A lógica vem de `./aparelhos`, o MESMO módulo que os testes exercitam —
   // não uma cópia. Mutar o módulo tem que quebrar a tela.
   const aparelhos = estadoDosAparelhos(d.aparelhos_resumo);
+  const sessoes = estadoDasSessoes(d.sessoes_simultaneas);
   return (
     <>
       <div className="pdqfb-kpis">
@@ -1312,6 +1335,62 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
             </span>
           ))}
           <span style={{ display: 'block', marginTop: 4 }}>{LEGENDA_OLHAR}</span>
+          <span style={{ display: 'block', marginTop: 4 }}>
+            Este quadro <strong>não limita nada</strong> — nenhum acesso é bloqueado por
+            causa dele.
+          </span>
+        </small>
+      </div>
+
+      <div className="pdqfb-panel">
+        <h2>Sessões ao mesmo tempo</h2>
+        {sessoes.temDado ? (
+          sessoes.linhas.map((l) => (
+            <div key={l.perfil_id} className="pdqfb-row">
+              <div className="name">
+                {l.nome}{' '}
+                <small>
+                  {textoPlataformas(l)}
+                  {l.sessoes_na_janela != null
+                    ? ` · ${l.sessoes_na_janela} sessão(ões) próximas no tempo`
+                    : ''}
+                </small>
+              </div>
+              <div
+                className="v"
+                style={sinalSessao(l) === 'olhar' ? { color: '#d68910' } : undefined}
+              >
+                {/* Rótulo em TEXTO, não só cor (WCAG 1.4.1) — como no card de aparelhos. */}
+                {rotuloSinalSessao(l) ? (
+                  <small style={{ marginRight: 6, fontWeight: 600 }}>
+                    {rotuloSinalSessao(l)}
+                  </small>
+                ) : null}
+                {l.cruza_plataforma === true ? '!' : '·'}
+              </div>
+            </div>
+          ))
+        ) : sessoes.semDado ? (
+          /* 🔴 NADA foi apurado — e isso NÃO é "ninguém usa ao mesmo tempo". */
+          <div className="pdqfb-row">
+            <div className="name">ainda não apurado</div>
+            <div className="v">—</div>
+          </div>
+        ) : (
+          /* 🔴 Apurado, e ninguém bate. Aqui a afirmação é legítima: houve leitura, e a
+             fonte (`auth.sessions`) nunca está vazia. */
+          <div className="pdqfb-row">
+            <div className="name">nenhuma conta com sessões ao mesmo tempo</div>
+            <div className="v">0</div>
+          </div>
+        )}
+        <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
+          {RESSALVAS_SESSOES.map((r, i) => (
+            <span key={i} style={{ display: 'block', marginTop: i ? 4 : 0 }}>
+              ⚠️ {r}
+            </span>
+          ))}
+          <span style={{ display: 'block', marginTop: 4 }}>{LEGENDA_OLHAR_SESSAO}</span>
           <span style={{ display: 'block', marginTop: 4 }}>
             Este quadro <strong>não limita nada</strong> — nenhum acesso é bloqueado por
             causa dele.
