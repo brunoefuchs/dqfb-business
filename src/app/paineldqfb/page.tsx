@@ -1245,6 +1245,15 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
                       {l.redes_distintas} rede{l.redes_distintas === 1 ? '' : 's'} · {l.plataformas}
                       {l.novos_12m > 0 ? ` · ${l.novos_12m} novo(s) em 12 meses` : ''}
                     </small>
+                    {l.modelos ? (
+                      /* 🔴 Repetição é ESPERADA: o mesmo texto duas vezes são dois aparelhos.
+                         O nome não identifica o aparelho nas duas direções — a dona edita. */
+                      <small style={{ display: 'block', opacity: 0.75, marginTop: 2 }}>
+                        {l.modelos}
+                      </small>
+                    ) : null}
+                    <small style={{ display: 'none' }}>
+                    </small>
                   </div>
                   <div
                     className="v"

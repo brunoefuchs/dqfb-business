@@ -183,3 +183,23 @@ describe('(2.45) as ressalvas cobrem os DOIS vieses do par de números', () => {
     expect(RESSALVAS.some((r) => r.includes('ENTRE os dois'))).toBe(true);
   });
 });
+
+
+describe('(2.50) os nomes são contexto, e a ressalva diz isso nas DUAS direções', () => {
+  it('🔴 declara que repetição é esperada', () => {
+    // O dono descobriu o defeito da contagem justamente por ter dois SM-A346M.
+    // Uma tela que sugira "repetido = erro" convida alguém a "limpar" com distinct.
+    expect(RESSALVAS.some((r) => r.includes('repetição é esperada'))).toBe(true);
+  });
+
+  it('🔴 declara a mão INVERSA — o mesmo celular pode mudar de nome', () => {
+    // A versão anterior da ressalva era de mão única. `Constants.deviceName` é editável
+    // pela dona, então string diferente também não prova aparelho diferente.
+    expect(RESSALVAS.some((r) => r.includes('a dona edita'))).toBe(true);
+  });
+
+  it('controle positivo: a ressalva do CGNAT continua lá, não foi substituída', () => {
+    // Sem este, "acrescentei a ressalva nova" seria satisfeito por ter TROCADO uma antiga.
+    expect(RESSALVAS.some((r) => r.includes('CGNAT'))).toBe(true);
+  });
+});

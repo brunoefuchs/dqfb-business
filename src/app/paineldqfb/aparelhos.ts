@@ -12,6 +12,21 @@ export type AparelhoLinha = {
   nome: string;
   aparelhos: number;
   /**
+   * (Story 2.50) Um item por aparelho registrado, na ordem em que apareceram.
+   *
+   * 🔴 **Repetição é esperada, e apagá-la seria o defeito.** O mesmo texto duas vezes são
+   * DUAS linhas, não um erro — foi assim que o dono descobriu que a contagem confirmada
+   * estava errada: os dois `SM-A346M` dele são celulares diferentes.
+   *
+   * 🔴 **O nome NÃO identifica o aparelho, nas DUAS direções.** Celulares diferentes podem
+   * trazer o mesmo texto, e o mesmo celular pode trazer textos diferentes — a dona edita o
+   * nome (`Constants.deviceName`). Quem conta aparelho é `aparelhos`; isto é contexto.
+   *
+   * `null` = a coluna não veio (edge anterior à migration). `(sem nome)` = o aparelho não
+   * informou nome. Célula terminada em `…` foi cortada por tamanho.
+   */
+  modelos?: string | null;
+  /**
    * (Story 2.45) Aparelhos vistos em DOIS DIAS distintos, no relógio de Brasília.
    *
    * 🔴 `null` = a coluna não veio (edge publicada antes da migration). NÃO é zero — a
@@ -41,6 +56,7 @@ export const RESSALVAS = [
   'O número grande conta INSTALAÇÕES distintas. Reinstalar o app (Android) zera o identificador, então reinstalação aparece como aparelho novo — este número SUPERESTIMA.',
   'O "confirmado" ao lado só conta aparelho que voltou em outro dia. Ele SUBESTIMA: aparelho que existe mas é pouco usado não entra. Medido em 24/08 na conta do dono — 3 aparelhos reais, 1 confirmado.',
   'A verdade está ENTRE os dois números. Nenhum dos dois sozinho é a contagem certa.',
+  'Os nomes abaixo de cada conta são contexto, não identidade: repetição é esperada (dois celulares iguais dão o mesmo texto) e o mesmo celular pode mudar de nome, porque a dona edita. "(sem nome)" = o aparelho não informou.',
   'Em rede móvel (4G), operadoras usam CGNAT: pessoas diferentes saem com o mesmo código de rede. "Redes distintas" SUBESTIMA compartilhamento em quem usa celular.',
 ] as const;
 
