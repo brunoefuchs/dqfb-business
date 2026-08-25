@@ -349,7 +349,7 @@ function usePainelApi() {
 
 function PainelDqfb({ onSair }: { onSair: () => void }) {
   const api = usePainelApi();
-  const [tab, setTab] = useState<'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta' | 'lu-curso'>('custo');
+  const [tab, setTab] = useState<'custo' | 'contas' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta' | 'lu-curso'>('custo');
   const [custo, setCusto] = useState<Custo | null>(null);
   const [fila, setFila] = useState<FilaItem[] | null>(null);
   /** Contadores da Mel — vêm da edge (count exato, não `itens.length`, que é limitado a 100). */
@@ -471,7 +471,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
     void loadCusto();
   }, [loadCusto]);
 
-  const trocarTab = (t: 'custo' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta' | 'lu-curso') => {
+  const trocarTab = (t: 'custo' | 'contas' | 'revisar' | 'avaliador' | 'lu' | 'lu-proposta' | 'lu-curso') => {
     setTab(t);
     if (t === 'custo') void loadCusto();
     else if (t === 'revisar') void loadFila();
@@ -482,7 +482,9 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
   };
 
   const atualizarTab = () => {
-    if (tab === 'custo') void loadCusto();
+    // 🔴 'contas' lê o MESMO payload de 'custo' — os quatro cards vêm do mesmo
+    // `admin-painel`. Sem isto a aba abre vazia em quem entra direto nela.
+    if (tab === 'custo' || tab === 'contas') void loadCusto();
     else if (tab === 'revisar') void loadFila();
     else if (tab === 'lu') void loadLu();
     else if (tab === 'lu-proposta') void loadLuProp();
@@ -792,6 +794,9 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
           <button className={tab === 'custo' ? 'on' : ''} onClick={() => trocarTab('custo')}>
             Custo de IA
           </button>
+          <button className={tab === 'contas' ? 'on' : ''} onClick={() => trocarTab('contas')}>
+            Contas e acesso
+          </button>
           <button className={tab === 'revisar' ? 'on' : ''} onClick={() => trocarTab('revisar')}>
             Mel respostas
           </button>
@@ -816,6 +821,7 @@ function PainelDqfb({ onSair }: { onSair: () => void }) {
         {carregando ? <div className="pdqfb-loading">Carregando…</div> : null}
 
         {!carregando && tab === 'custo' && custo ? <CustoView d={custo} onSetSaldo={setSaldoAncora} /> : null}
+        {!carregando && tab === 'contas' && custo ? <ContasView d={custo} /> : null}
         {!carregando && tab === 'revisar' && fila ? (
           <RevisarView
             itens={fila}
@@ -989,34 +995,20 @@ function SaldoProvedores(
   );
 }
 
-function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string, saldoUsd: number) => Promise<void> }) {
-  const maxDia = Math.max(1, ...d.dia.map((x) => x.brl));
-  // (recorte de tempo) toggles independentes: Top usuárias / Por provedor / Por feature / Por origem.
-  const [pU, setPU] = useState<Periodo>('completo');
-  const [pP, setPP] = useState<Periodo>('completo');
-  const [pF, setPF] = useState<Periodo>('completo');
-  const [pO, setPO] = useState<Periodo>('completo');
-  const usuariaSel = pickPeriodo(pU, d.usuaria, d.usuaria_ano, d.usuaria_mes);
-  const provedorSel = pickPeriodo(pP, d.provedor, d.provedor_ano, d.provedor_mes);
-  // (origem) aditivo: edge antigo não manda o campo → o card inteiro se esconde.
-  const origemSel = pickPeriodo(pO, d.origem, d.origem_ano, d.origem_mes);
-  const maxOrigem = Math.max(1, ...(origemSel ?? []).map((x) => x.brl));
-  const featureSel = pickPeriodo(pF, d.feature, d.feature_ano, d.feature_mes);
-  const maxProv = Math.max(1, ...provedorSel.map((x) => x.brl));
-  // (Story 12.B2 / AC-1) Campos aditivos do edge — ausentes no rollout (painel antes do
-  // edge). Só mostra o card quando ambos vieram; senão esconde (sem quebrar o resto).
-  const temCustoDia = d.custo_hoje_usd != null && d.teto_usd_dia != null;
-  const custoHoje = d.custo_hoje_usd ?? 0;
-  const tetoDia = d.teto_usd_dia ?? 0;
-  const pctHoje = tetoDia > 0 ? Math.round((custoHoje / tetoDia) * 100) : 0;
-
-  // (Story 12.B4) cota de e-mail do Mailtrap. O card é SEMPRE visível — decisão do dono
-  // em 2026-08-14: "pode aparecer 0% senão não vou ver a barra". Mas os dois estados são
-  // distintos: `mq` ausente = nunca medido; `mq.pct === 0` = zero REAL, medido.
-  // 🔴 A lógica vem de `estadoDaCotaEmail`, o MESMO módulo que os testes exercitam.
-  // A primeira versão calculava tudo aqui e o teste verificava uma cópia — que é o
-  // defeito que a Story 2.19 e a 2.21 cometeram na mesma semana, as duas pegas por
-  // mutação. Mutar o módulo tem que quebrar a tela; se não quebrar, o teste é teatro.
+/**
+ * (25/08/2026) Aba "Contas e acesso" — os quatro cards que falam de CONTA, não de custo.
+ *
+ * 🔴 Saíram da aba de custo a pedido do dono: eles respondem outra pergunta. Cota de e-mail
+ * e Registro legal são saúde da operação; Aparelhos e Sessões são as duas leituras de "quem
+ * está usando a conta" — e elas se leem JUNTAS, nunca isoladas (uma conta aparelho, a outra
+ * pessoa). Separá-las de novo desfaria o par.
+ *
+ * ⛔ Nenhum destes quadros limita nada. A trava é decisão do dono.
+ *
+ * Recebe o MESMO `d` da aba de custo: os dados chegam no mesmo payload do `admin-painel`,
+ * numa chamada só. Nada de fetch novo.
+ */
+function ContasView({ d }: { d: Custo }) {
   const mq = d.mailtrap_quota;
   const cota = estadoDaCotaEmail(mq);
   const mqCor =
@@ -1029,80 +1021,10 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
   // (Story 2.27 / T10) saúde do registro legal de acesso. Mesma disciplina dos cards
   // vizinhos: o módulo decide, a tela pinta — e mutar o módulo tem de quebrar a tela.
   const regLegal = estadoDoRegistroLegal(d.registro_legal);
-
-  // (Story 12.B5) A lógica vem de `./aparelhos`, o MESMO módulo que os testes exercitam —
-  // não uma cópia. Mutar o módulo tem que quebrar a tela.
   const aparelhos = estadoDosAparelhos(d.aparelhos_resumo);
   const sessoes = estadoDasSessoes(d.sessoes_simultaneas);
   return (
     <>
-      <div className="pdqfb-kpis">
-        {/* (3 KPIs de tempo) Completo · Este ano · Este mês — R$ grande + US$ pequeno. */}
-        <div className="pdqfb-kpi dark">
-          <div className="lbl">Completo · desde sempre</div>
-          <div className="val">
-            {fmt(d.total_brl)}
-            <small>US$ {(d.total_usd ?? d.total_brl / d.usd_brl).toFixed(2)}</small>
-          </div>
-        </div>
-        <div className="pdqfb-kpi">
-          <div className="lbl">Este ano</div>
-          <div className="val">
-            {fmt(d.total_ano_brl ?? 0)}
-            <small>US$ {(d.total_ano_usd ?? 0).toFixed(2)}</small>
-          </div>
-        </div>
-        <div className="pdqfb-kpi">
-          <div className="lbl">Este mês</div>
-          <div className="val">
-            {fmt(d.total_mes_brl ?? 0)}
-            <small>US$ {(d.total_mes_usd ?? 0).toFixed(2)}</small>
-          </div>
-        </div>
-        <div className="pdqfb-kpi">
-          <div className="lbl">Chamadas de IA</div>
-          <div className="val">{d.chamadas.toLocaleString('pt-BR')}</div>
-        </div>
-        <div className="pdqfb-kpi">
-          <div className="lbl">Usuárias</div>
-          <div className="val">{d.usuarias}</div>
-        </div>
-        <div className="pdqfb-kpi">
-          <div className="lbl">Custo médio</div>
-          <div className="val">
-            {fmt(d.custo_medio_brl)}
-            <small>/chamada</small>
-          </div>
-        </div>
-      </div>
-
-      {/* (saldo por provedor) Card "Saldo dos provedores" — âncora − gasto rastreado. */}
-      <SaldoProvedores saldo={d.saldo ?? []} onSet={onSetSaldo} />
-
-      {/* (Story 12.B2 / AC-1) Card "Custo IA do dia": consumo de hoje (dia BR) vs teto. */}
-      {temCustoDia ? (
-        <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
-          <h2>Custo IA do dia</h2>
-          <div className="pdqfb-row">
-            <div className="name">
-              US$ {custoHoje.toFixed(2)} de US$ {tetoDia.toFixed(2)} consumidos hoje{' '}
-              <small>(dia BR)</small>
-            </div>
-            <div className="v">{pctHoje}%</div>
-          </div>
-          <div className="pdqfb-bar">
-            <span style={{ width: `${Math.min(100, pctHoje)}%` }} />
-          </div>
-          <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
-            Teto exibido = env AVALIADOR_KILL_SWITCH_USD_DIA (default 50). ⚠️ Para mudar o teto
-            hoje é preciso setar OS DOIS envs — AVALIADOR_KILL_SWITCH_USD_DIA (Avaliador) E
-            IA_KILL_SWITCH_GLOBAL_USD_DIA (o teto global que governa Mel/Tutor/Localizador desde
-            a 12.B3). Este card lê a cópia do admin-painel; pode divergir do teto real se um dos
-            envs ficar para trás.
-          </small>
-        </div>
-      ) : null}
-
       {/* (Story 12.B4) Card "Cota de e-mail": consumo do mês vs limite do Mailtrap. */}
       <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
         <h2>Cota de e-mail</h2>
@@ -1397,6 +1319,126 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
           </span>
         </small>
       </div>
+    </>
+  );
+}
+
+function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string, saldoUsd: number) => Promise<void> }) {
+  const maxDia = Math.max(1, ...d.dia.map((x) => x.brl));
+  // (recorte de tempo) toggles independentes: Top usuárias / Por provedor / Por feature / Por origem.
+  const [pU, setPU] = useState<Periodo>('completo');
+  const [pP, setPP] = useState<Periodo>('completo');
+  const [pF, setPF] = useState<Periodo>('completo');
+  const [pO, setPO] = useState<Periodo>('completo');
+  const usuariaSel = pickPeriodo(pU, d.usuaria, d.usuaria_ano, d.usuaria_mes);
+  const provedorSel = pickPeriodo(pP, d.provedor, d.provedor_ano, d.provedor_mes);
+  // (origem) aditivo: edge antigo não manda o campo → o card inteiro se esconde.
+  const origemSel = pickPeriodo(pO, d.origem, d.origem_ano, d.origem_mes);
+  const maxOrigem = Math.max(1, ...(origemSel ?? []).map((x) => x.brl));
+  const featureSel = pickPeriodo(pF, d.feature, d.feature_ano, d.feature_mes);
+  const maxProv = Math.max(1, ...provedorSel.map((x) => x.brl));
+  // (Story 12.B2 / AC-1) Campos aditivos do edge — ausentes no rollout (painel antes do
+  // edge). Só mostra o card quando ambos vieram; senão esconde (sem quebrar o resto).
+  const temCustoDia = d.custo_hoje_usd != null && d.teto_usd_dia != null;
+  const custoHoje = d.custo_hoje_usd ?? 0;
+  const tetoDia = d.teto_usd_dia ?? 0;
+  const pctHoje = tetoDia > 0 ? Math.round((custoHoje / tetoDia) * 100) : 0;
+
+  // (Story 12.B4) cota de e-mail do Mailtrap. O card é SEMPRE visível — decisão do dono
+  // em 2026-08-14: "pode aparecer 0% senão não vou ver a barra". Mas os dois estados são
+  // distintos: `mq` ausente = nunca medido; `mq.pct === 0` = zero REAL, medido.
+  // 🔴 A lógica vem de `estadoDaCotaEmail`, o MESMO módulo que os testes exercitam.
+  // A primeira versão calculava tudo aqui e o teste verificava uma cópia — que é o
+  // defeito que a Story 2.19 e a 2.21 cometeram na mesma semana, as duas pegas por
+  // mutação. Mutar o módulo tem que quebrar a tela; se não quebrar, o teste é teatro.
+
+  // (Story 12.B5) A lógica vem de `./aparelhos`, o MESMO módulo que os testes exercitam —
+  // não uma cópia. Mutar o módulo tem que quebrar a tela.
+  const aparelhos = estadoDosAparelhos(d.aparelhos_resumo);
+  const sessoes = estadoDasSessoes(d.sessoes_simultaneas);
+  return (
+    <>
+      <div className="pdqfb-kpis">
+        {/* (3 KPIs de tempo) Completo · Este ano · Este mês — R$ grande + US$ pequeno. */}
+        <div className="pdqfb-kpi dark">
+          <div className="lbl">Completo · desde sempre</div>
+          <div className="val">
+            {fmt(d.total_brl)}
+            <small>US$ {(d.total_usd ?? d.total_brl / d.usd_brl).toFixed(2)}</small>
+          </div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Este ano</div>
+          <div className="val">
+            {fmt(d.total_ano_brl ?? 0)}
+            <small>US$ {(d.total_ano_usd ?? 0).toFixed(2)}</small>
+          </div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Este mês</div>
+          <div className="val">
+            {fmt(d.total_mes_brl ?? 0)}
+            <small>US$ {(d.total_mes_usd ?? 0).toFixed(2)}</small>
+          </div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Chamadas de IA</div>
+          <div className="val">{d.chamadas.toLocaleString('pt-BR')}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Usuárias</div>
+          <div className="val">{d.usuarias}</div>
+        </div>
+        <div className="pdqfb-kpi">
+          <div className="lbl">Custo médio</div>
+          <div className="val">
+            {fmt(d.custo_medio_brl)}
+            <small>/chamada</small>
+          </div>
+        </div>
+      </div>
+
+      {/* (saldo por provedor) Card "Saldo dos provedores" — âncora − gasto rastreado. */}
+      <SaldoProvedores saldo={d.saldo ?? []} onSet={onSetSaldo} />
+
+      {/* (Story 12.B2 / AC-1) Card "Custo IA do dia": consumo de hoje (dia BR) vs teto. */}
+      {temCustoDia ? (
+        <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
+          <h2>Custo IA do dia</h2>
+          <div className="pdqfb-row">
+            <div className="name">
+              US$ {custoHoje.toFixed(2)} de US$ {tetoDia.toFixed(2)} consumidos hoje{' '}
+              <small>(dia BR)</small>
+            </div>
+            <div className="v">{pctHoje}%</div>
+          </div>
+          <div className="pdqfb-bar">
+            <span style={{ width: `${Math.min(100, pctHoje)}%` }} />
+          </div>
+          <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
+            Teto exibido = env AVALIADOR_KILL_SWITCH_USD_DIA (default 50). ⚠️ Para mudar o teto
+            hoje é preciso setar OS DOIS envs — AVALIADOR_KILL_SWITCH_USD_DIA (Avaliador) E
+            IA_KILL_SWITCH_GLOBAL_USD_DIA (o teto global que governa Mel/Tutor/Localizador desde
+            a 12.B3). Este card lê a cópia do admin-painel; pode divergir do teto real se um dos
+            envs ficar para trás.
+          </small>
+        </div>
+      ) : null}
+
+      <div className="pdqfb-panel" style={{ marginTop: 18 }}>
+        <h2>
+          Por dia <small>últimos {d.dias_grafico}d</small>
+        </h2>
+        <div className="pdqfb-spark">
+          {d.dia.map((x) => (
+            <div key={x.dia} className="d" style={{ height: `${Math.round((x.brl / maxDia) * 100)}%` }}>
+              <span className="t">
+                {x.dia.slice(5)} · {fmt(x.brl)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="pdqfb-grid">
         <div className="pdqfb-panel">
@@ -1503,20 +1545,6 @@ function CustoView({ d, onSetSaldo }: { d: Custo; onSetSaldo: (provedor: string,
         </table>
       </div>
 
-      <div className="pdqfb-panel" style={{ marginTop: 18 }}>
-        <h2>
-          Por dia <small>últimos {d.dias_grafico}d</small>
-        </h2>
-        <div className="pdqfb-spark">
-          {d.dia.map((x) => (
-            <div key={x.dia} className="d" style={{ height: `${Math.round((x.brl / maxDia) * 100)}%` }}>
-              <span className="t">
-                {x.dia.slice(5)} · {fmt(x.brl)}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       <div className="pdqfb-panel" style={{ marginTop: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
