@@ -34,15 +34,38 @@ const PAGE = readFileSync(resolve(process.cwd(), 'src/app/paineldqfb/page.tsx'),
  * toda asserção negativa.
  */
 function fatiaDoCard(): string {
-  // 🔴 A âncora inicial é o ELEMENTO, não o comentário que o antecede — conserto de
-  // F-2.66-11. A versão anterior recortava a partir do `{/* … */}` do card, então o
-  // comentário INTEIRO entrava na fatia: a `@qa` removeu a prop `erro` da montagem, deixou
-  // `erro={d.medicao_uso_esparso_erro}` num comentário logo acima, e a guarda ficou verde.
-  const i = PAGE.indexOf('<UsoEsparsoCard');
+  // 🔴 LIMPAR PRIMEIRO, ANCORAR DEPOIS — e a ORDEM É O CONSERTO (F-2.66-12).
+  //
+  // As duas operações já existiam desde o F-2.66-11; o que estava errado era a sequência.
+  // A versão anterior procurava `<UsoEsparsoCard` no arquivo CRU e só limpava comentários
+  // DEPOIS do recorte. A `@qa` explorou a fresta: um comentário ACIMA do elemento que
+  // CITE o elemento **retargeta a fatia** — o `indexOf` para no comentário, o recorte
+  // começa ali, e a limpeza posterior devolve um trecho que não é a montagem real. Com
+  // `erro={undefined}` na tela e o decoy no comentário, a guarda ficava verde E o `tsc`
+  // também (prop obrigatória cobre OMISSÃO, não VALOR).
+  //
+  // Limpando o arquivo inteiro antes, o comentário deixa de existir para o `indexOf`, e a
+  // âncora só pode parar na montagem de verdade. É a terceira vez que uma guarda de texto
+  // sobre o `page.tsx` cai nesta story, e a lição já não é sobre regex: o texto tem de ser
+  // NORMALIZADO antes de qualquer busca, não depois.
+  const limpo = semComentarios(PAGE);
+
+  // 🔬 E a âncora tem de ser ÚNICA. Duas montagens (ou uma string sobrevivente) fariam a
+  // fatia ser a errada em silêncio — o mesmo defeito de "substituição que casa noutro
+  // lugar", agora do lado da leitura.
+  const ocorrencias = limpo.split('<UsoEsparsoCard').length - 1;
+  if (ocorrencias !== 1) {
+    throw new Error(
+      `esperava UMA montagem de <UsoEsparsoCard no page.tsx limpo, achei ${ocorrencias} — ` +
+        'a fatia seria a errada sem ninguém notar',
+    );
+  }
+
+  const i = limpo.indexOf('<UsoEsparsoCard');
   if (i < 0) throw new Error('âncora inicial do card de uso esparso não casou no page.tsx');
-  const j = PAGE.indexOf('/>', i);
+  const j = limpo.indexOf('/>', i);
   if (j < 0) throw new Error('âncora final do card de uso esparso não casou no page.tsx');
-  return semComentarios(PAGE.slice(i, j + 2));
+  return limpo.slice(i, j + 2);
 }
 
 /**
@@ -150,6 +173,20 @@ describe('a tela chama os módulos, não uma cópia', () => {
     const trecho = fatiaDoCard();
     expect(trecho.length).toBeGreaterThan(60);
     expect(trecho).toContain('UsoEsparsoCard');
+  });
+
+  it('🔴 (2.66/F-12) um comentário ACIMA que cite o elemento não retargeta a fatia', () => {
+    // A fresta que a `@qa` explorou: com a busca no arquivo CRU, um comentário que cite
+    // `<UsoEsparsoCard` faz o `indexOf` parar NELE, e a fatia deixa de ser a montagem.
+    // Aqui a asserção é sobre a ORDEM das duas operações, medida no comportamento.
+    const trecho = fatiaDoCard();
+    // a fatia real começa na montagem e é curta; se tivesse começado num comentário, ela
+    // carregaria o texto do comentário junto
+    expect(trecho.startsWith('<UsoEsparsoCard')).toBe(true);
+    expect(trecho.endsWith('/>')).toBe(true);
+    // e não sobra comentário nenhum dentro dela
+    expect(trecho).not.toContain('/*');
+    expect(trecho).not.toContain('//');
   });
 
   it('🔬 (2.66/F-11) o limpador de comentários FUNCIONA — controle do instrumento', () => {

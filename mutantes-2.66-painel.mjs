@@ -326,6 +326,62 @@ const MUTANTES = [
     asercao: 'F-2.66-11 · o decoy dentro da tag também não pode contar como prop',
   },
   {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // OS QUATRO ATAQUES DA `@qa` NA RODADA 3 (F-2.66-12), reaplicados nominalmente.
+    //
+    // A fresta era a ORDEM: `fatiaDoCard()` procurava a âncora no arquivo CRU e só limpava
+    // comentários DEPOIS do recorte. Um comentário ACIMA da montagem que citasse o
+    // elemento fazia o `indexOf` parar nele e RETARGETAVA a fatia.
+    //
+    // 🔴 E `erro={undefined}` é o outro lado: a prop obrigatória cobre OMISSÃO, não VALOR.
+    // O `tsc` aceita `undefined` (é parte do tipo), então quem tem de reprovar aqui é a
+    // GUARDA — e ela só reprova se a fatia for a montagem de verdade.
+    // ═══════════════════════════════════════════════════════════════════════════
+    id: 'P17 · F-2.66-12 (ataque 1) — `erro={undefined}`, sem decoy nenhum',
+    arquivo: PAGE, teste: T_FIACAO,
+    aplica: (s) => s.replace(
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={undefined} />',
+    ),
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'F-12 · `undefined` compila (é parte do tipo) — quem reprova tem de ser a guarda',
+  },
+  {
+    id: 'P18 · F-2.66-12 (ataque 2) — `erro={undefined}` + decoy em comentário de LINHA acima',
+    arquivo: PAGE, teste: T_FIACAO,
+    aplica: (s) => s.replace(
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+      '      {/* <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} /> */}\n' +
+        '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={undefined} />',
+    ),
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'F-12 · o comentário acima NÃO pode retargetar a fatia',
+  },
+  {
+    id: 'P19 · F-2.66-12 (ataque 3) — `erro={undefined}` + decoy em comentário de BLOCO acima',
+    arquivo: PAGE, teste: T_FIACAO,
+    aplica: (s) => s.replace(
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+      '      {/*\n       * <UsoEsparsoCard erro={d.medicao_uso_esparso_erro} />\n       */}\n' +
+        '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={undefined} />',
+    ),
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'F-12 · bloco multilinha também não pode retargetar',
+  },
+  {
+    // 🔴 Este é o único dos quatro que o `tsc` TAMBÉM reprova (TS2741, omissão da prop) —
+    // é o F-2.66-11 combinado com a fresta de ordem do F-2.66-12.
+    id: 'P20 · F-2.66-12 (ataque 4) — prop REMOVIDA + decoy acima (o `tsc` também reprova)',
+    arquivo: PAGE, teste: T_FIACAO,
+    aplica: (s) => s.replace(
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+      '      {/* <UsoEsparsoCard erro={d.medicao_uso_esparso_erro} /> */}\n' +
+        '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} />',
+    ),
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'F-11 + F-12 · omissão da prop COM decoy: guarda vermelha E `TS2741`',
+  },
+  {
     // 🔴 SENTINELA. A `@qa` plantou uma na revisão dela (QP0, palavra de comentário) e ela
     // sobreviveu, como tinha de ser. Aqui a sentinela é PERMANENTE: se ela morder, a
     // bancada está matando tudo e nenhum «MORDEU» acima significa alguma coisa.
