@@ -299,6 +299,33 @@ const MUTANTES = [
     asercao: 'AC7 · sem a prop de erro os dois estados de ausência voltam a colapsar',
   },
   {
+    // 🔴 O MUTANTE DA `@qa` NA RODADA 2 (F-2.66-11), reaplicado. Ela removeu a prop `erro`
+    // da montagem e deixou um DECOY num comentário JSX logo acima — a guarda de fiação
+    // ficou verde, o `tsc` ficou verde (prop opcional some sem erro) e os 120 testes
+    // passaram. Agora a fatia é recortada a partir do ELEMENTO e limpa de comentários.
+    id: 'P15 · F-2.66-11 — a prop `erro` some e um DECOY fica no comentário JSX acima',
+    arquivo: PAGE, teste: T_FIACAO,
+    aplica: (s) => s.replace(
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+      '      {/* erro={d.medicao_uso_esparso_erro} — decoy do mutante F-2.66-11 */}\n' +
+        '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} />',
+    ),
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'F-2.66-11 · comentário não é executado; a guarda não pode aceitá-lo como prova',
+  },
+  {
+    // 🔴 A VARIANTE MAIS AFIADA: mover a âncora sozinha não bastaria, porque dentro da
+    // PRÓPRIA TAG cabe comentário de bloco. Sem o limpador, este decoy passaria.
+    id: 'P16 · F-2.66-11 — o DECOY vai para DENTRO da tag, como comentário de bloco',
+    arquivo: PAGE, teste: T_FIACAO,
+    aplica: (s) => s.replace(
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+      '      <UsoEsparsoCard /* erro={d.medicao_uso_esparso_erro} */ semanas={d.medicao_uso_esparso} />',
+    ),
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'F-2.66-11 · o decoy dentro da tag também não pode contar como prop',
+  },
+  {
     // 🔴 SENTINELA. A `@qa` plantou uma na revisão dela (QP0, palavra de comentário) e ela
     // sobreviveu, como tinha de ser. Aqui a sentinela é PERMANENTE: se ela morder, a
     // bancada está matando tudo e nenhum «MORDEU» acima significa alguma coisa.

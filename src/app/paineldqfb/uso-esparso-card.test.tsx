@@ -55,6 +55,7 @@ describe('🔴 o defeito do CodeRabbit, medido no DOM (F-2.66-02)', () => {
     // avaliava a contagem antes do sinal. A tela dizia o oposto do que o banco disse.
     render(
       <UsoEsparsoCard
+        erro={null}
         semanas={[
           semana({ dia: '2026-09-09' }),
           semana({ dia: '2026-09-02', sinal_abuso: true, contas_acima_de_3: null }),
@@ -71,6 +72,7 @@ describe('🔴 o defeito do CodeRabbit, medido no DOM (F-2.66-02)', () => {
     // `queryByText(...) === null` sobre DOM vazio é verdadeiro trivialmente.
     render(
       <UsoEsparsoCard
+        erro={null}
         semanas={[
           semana({ dia: '2026-09-09' }),
           semana({ dia: '2026-09-02', sinal_abuso: false, contas_acima_de_3: 0 }),
@@ -84,6 +86,7 @@ describe('🔴 o defeito do CodeRabbit, medido no DOM (F-2.66-02)', () => {
   it('contagem POSITIVA detalha o número; sinal nulo sai como «—»', () => {
     render(
       <UsoEsparsoCard
+        erro={null}
         semanas={[
           semana({ dia: '2026-09-16' }),
           semana({ dia: '2026-09-09', sinal_abuso: true, contas_acima_de_3: 2 }),
@@ -108,26 +111,26 @@ describe('🔴 os TRÊS estados do sinal, TEXTO **e** SELO (F-2.66-09)', () => {
 
   for (const c of casos) {
     it(`sinal ${c.nome}: o texto e o selo dizem a MESMA coisa`, () => {
-      render(<UsoEsparsoCard semanas={[semana({ sinal_abuso: c.sinal })]} />);
+      render(<UsoEsparsoCard erro={null} semanas={[semana({ sinal_abuso: c.sinal })]} />);
       expect(screen.getByTestId('uso-esparso-sinal-texto').textContent).toMatch(c.texto);
       expect(screen.getByTestId('uso-esparso-sinal-selo').textContent).toContain(c.selo);
     });
   }
 
   it('🔴 o selo de "sem resposta" NÃO é o mesmo de "tudo bem"', () => {
-    render(<UsoEsparsoCard semanas={[semana({ sinal_abuso: null })]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({ sinal_abuso: null })]} />);
     const semResposta = screen.getByTestId('uso-esparso-sinal-selo').textContent;
     cleanup();
-    render(<UsoEsparsoCard semanas={[semana({ sinal_abuso: false })]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({ sinal_abuso: false })]} />);
     const apagado = screen.getByTestId('uso-esparso-sinal-selo').textContent;
     expect(semResposta).not.toBe(apagado);
   });
 
   it('só o sinal ACESO carrega o rótulo "Olhar" em texto (WCAG 1.4.1, não só cor)', () => {
-    render(<UsoEsparsoCard semanas={[semana({ sinal_abuso: true })]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({ sinal_abuso: true })]} />);
     expect(screen.getByTestId('uso-esparso-sinal-selo').textContent).toContain('Olhar');
     cleanup();
-    render(<UsoEsparsoCard semanas={[semana({ sinal_abuso: false })]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({ sinal_abuso: false })]} />);
     expect(screen.getByTestId('uso-esparso-sinal-selo').textContent).not.toContain('Olhar');
   });
 });
@@ -137,7 +140,7 @@ describe('🔴 a cardinalidade da lista de medições anteriores (F-2.66-10)', (
     // O mutante QP3 da `@qa` trocou `slice(1, 9)` por `slice(1, 2)` e sobreviveu: a lista
     // encolheu de 8 para 1 sem nenhum teste reclamar.
     const doze = Array.from({ length: 12 }, (_, i) => semana({ dia: `2026-09-${String(i + 1).padStart(2, '0')}` }));
-    render(<UsoEsparsoCard semanas={doze} />);
+    render(<UsoEsparsoCard erro={null} semanas={doze} />);
     expect(screen.getAllByTestId('uso-esparso-semana')).toHaveLength(MAX_MEDICOES_ANTERIORES);
     // e a PRIMEIRA da lista é a segunda semana da série — a atual está no bloco de cima
     const anteriores = screen.getByTestId('uso-esparso-anteriores');
@@ -147,19 +150,19 @@ describe('🔴 a cardinalidade da lista de medições anteriores (F-2.66-10)', (
 
   it('com menos semanas que o teto, emite todas as que existem menos a atual', () => {
     const tres = ['2026-09-16', '2026-09-09', '2026-09-02'].map((dia) => semana({ dia }));
-    render(<UsoEsparsoCard semanas={tres} />);
+    render(<UsoEsparsoCard erro={null} semanas={tres} />);
     expect(screen.getAllByTestId('uso-esparso-semana')).toHaveLength(2);
   });
 
   it('com uma única semana, o bloco de anteriores nem aparece', () => {
-    render(<UsoEsparsoCard semanas={[semana({})]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({})]} />);
     expect(screen.queryByTestId('uso-esparso-anteriores')).toBeNull();
   });
 });
 
 describe('🔴 os TRÊS estados de ausência saem com frases DIFERENTES', () => {
   it('nunca medido: diz que a medição roda toda segunda, e NÃO afirma ausência de abuso', () => {
-    render(<UsoEsparsoCard semanas={undefined} />);
+    render(<UsoEsparsoCard erro={null} semanas={undefined} />);
     expect(screen.getByText(/ainda não medido/)).toBeTruthy();
     expect(screen.queryByText(/nenhuma conta passou do limite/)).toBeNull();
   });
@@ -171,7 +174,7 @@ describe('🔴 os TRÊS estados de ausência saem com frases DIFERENTES', () => 
   });
 
   it('medido e ninguém acima: aí sim a afirmação é legítima', () => {
-    render(<UsoEsparsoCard semanas={[semana({ sinal_abuso: false })]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({ sinal_abuso: false })]} />);
     expect(screen.getByText(/nenhuma conta passou do limite/)).toBeTruthy();
     expect(screen.queryByText(/ainda não medido/)).toBeNull();
   });
@@ -179,19 +182,19 @@ describe('🔴 os TRÊS estados de ausência saem com frases DIFERENTES', () => 
 
 describe('o rótulo do ACÚMULO e as ressalvas chegam à tela (achado 8)', () => {
   it('a saúde da coleta diz "acumulado desde 23/08/2026" na própria linha', () => {
-    render(<UsoEsparsoCard semanas={[semana({})]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({})]} />);
     expect(screen.getByText(/acumulado desde 23\/08\/2026/)).toBeTruthy();
   });
 
   it('as três ressalvas e a legenda do sinal são renderizadas', () => {
-    render(<UsoEsparsoCard semanas={[semana({})]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({})]} />);
     expect(screen.getByText(/ACUMULADOS desde 23\/08\/2026/)).toBeTruthy();
     expect(screen.getByText(/O sinal acende quando alguma conta passa do limite/)).toBeTruthy();
     expect(screen.getByText(/não limita nada/)).toBeTruthy();
   });
 
   it('a distribuição sai com os baldes do banco, e o total de contas', () => {
-    render(<UsoEsparsoCard semanas={[semana({})]} />);
+    render(<UsoEsparsoCard erro={null} semanas={[semana({})]} />);
     expect(screen.getByText('1 aparelho')).toBeTruthy();
     expect(screen.getByText('3 aparelhos')).toBeTruthy();
     expect(screen.getByText(/561 contas/)).toBeTruthy();

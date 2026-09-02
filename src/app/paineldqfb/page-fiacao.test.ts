@@ -34,12 +34,35 @@ const PAGE = readFileSync(resolve(process.cwd(), 'src/app/paineldqfb/page.tsx'),
  * toda asserção negativa.
  */
 function fatiaDoCard(): string {
-  const de = '{/* (Story 2.66 / AC7) Card "Uso esparso de aparelhos"';
-  const i = PAGE.indexOf(de);
+  // 🔴 A âncora inicial é o ELEMENTO, não o comentário que o antecede — conserto de
+  // F-2.66-11. A versão anterior recortava a partir do `{/* … */}` do card, então o
+  // comentário INTEIRO entrava na fatia: a `@qa` removeu a prop `erro` da montagem, deixou
+  // `erro={d.medicao_uso_esparso_erro}` num comentário logo acima, e a guarda ficou verde.
+  const i = PAGE.indexOf('<UsoEsparsoCard');
   if (i < 0) throw new Error('âncora inicial do card de uso esparso não casou no page.tsx');
   const j = PAGE.indexOf('/>', i);
   if (j < 0) throw new Error('âncora final do card de uso esparso não casou no page.tsx');
-  return PAGE.slice(i, j + 2);
+  return semComentarios(PAGE.slice(i, j + 2));
+}
+
+/**
+ * 🔴 Tira comentários antes de asserir — a segunda metade do conserto de F-2.66-11.
+ *
+ * Mover a âncora sozinha não bastaria: dentro da própria tag cabe comentário de bloco
+ * (`<UsoEsparsoCard /* erro={…} *​/ semanas={…} />`), e um decoy ali satisfaria a guarda
+ * do mesmo jeito. Guarda de texto só é honesta sobre o que a tela EXECUTA, e comentário
+ * não é executado.
+ *
+ * ⚠️ Isto é a defesa BARATA. A que de fato fecha o achado é estrutural e mora noutro
+ * gate: a prop `erro` do `UsoEsparsoCard` deixou de ser opcional, então removê-la da
+ * montagem **reprova no `tsc`** — e não há comentário que salve um compilador vermelho.
+ * As duas juntas porque falham em gates diferentes (`npm test` e `npm run typecheck`).
+ */
+function semComentarios(t: string): string {
+  return t
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ') // {/* comentário JSX */}
+    .replace(/\/\*[\s\S]*?\*\//g, ' ') //      /* comentário de bloco */
+    .replace(/^\s*\/\/.*$/gm, ' '); //            // comentário de linha
 }
 
 describe('a tela chama os módulos, não uma cópia', () => {
@@ -122,11 +145,23 @@ describe('a tela chama os módulos, não uma cópia', () => {
   });
 
   it('🔴 (2.66) a fatia do card NÃO é vazia — o recorte precisa de controle', () => {
-    // Fatia vazia satisfaz `not.toMatch` trivialmente, e as duas asserções acima passariam
-    // a medir nada. É o mesmo defeito de afirmar ausência sem controle positivo.
+    // Fatia vazia satisfaz `not.toMatch` trivialmente, e as asserções acima passariam a
+    // medir nada. É o mesmo defeito de afirmar ausência sem controle positivo.
     const trecho = fatiaDoCard();
-    expect(trecho.length).toBeGreaterThan(200);
-    expect(trecho).toContain('Uso esparso de aparelhos');
+    expect(trecho.length).toBeGreaterThan(60);
+    expect(trecho).toContain('UsoEsparsoCard');
+  });
+
+  it('🔬 (2.66/F-11) o limpador de comentários FUNCIONA — controle do instrumento', () => {
+    // Sem este par, «o decoy não passa» seria satisfeito por um limpador que apaga tudo
+    // (fatia vazia) ou por um que não apaga nada (e aí o decoy volta a passar). Os dois
+    // lados são exercitados com texto conhecido.
+    expect(semComentarios('a {/* erro={d.x} */} b')).not.toContain('erro={d.x}');
+    expect(semComentarios('a /* erro={d.x} */ b')).not.toContain('erro={d.x}');
+    expect(semComentarios('  // erro={d.x}\nreal')).not.toContain('erro={d.x}');
+    // 🔴 e o lado POSITIVO: o que NÃO é comentário tem de sobreviver intacto
+    expect(semComentarios('<X erro={d.y} />')).toContain('erro={d.y}');
+    expect(semComentarios('a {/* c */} b')).toContain('b');
   });
 
   it('a data do card da cota passa por `fmtDataBr`', () => {

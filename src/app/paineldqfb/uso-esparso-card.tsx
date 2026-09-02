@@ -52,6 +52,12 @@ export const MAX_MEDICOES_ANTERIORES = 8;
  * @param props.erro Código curto do erro de leitura, vindo de `medicao_uso_esparso_erro`.
  *   Presente e sem série, o card diz que a leitura FALHOU, com frase diferente da de
  *   "nunca medido": "não apurei" e "tentei e falhei" pedem ações diferentes.
+ *   🔴 **OBRIGATÓRIA, e não opcional — é o conserto de F-2.66-11.** Com `erro?:`, a `@qa`
+ *   removeu a prop da montagem no `page.tsx`, deixou um decoy num comentário JSX, e TUDO
+ *   ficou verde: a guarda de texto (o decoy a satisfazia), o `tsc` (prop opcional some sem
+ *   erro) e os 120 testes. Exigindo a prop, **quem reprova é o compilador** — e não há
+ *   comentário que salve um `tsc` vermelho. Passe `erro={null}` explicitamente quando não
+ *   houver erro: escrever `null` é uma decisão, omitir é um esquecimento silencioso.
  * @returns O card renderizado. Sem estado, sem `fetch`, sem `useEffect` — é o que torna
  *   `uso-esparso-card.test.tsx` capaz de renderizar e afirmar sobre o DOM.
  *
@@ -63,7 +69,8 @@ export function UsoEsparsoCard({
   erro,
 }: {
   semanas: SemanaUsoEsparso[] | undefined | null;
-  erro?: string | null;
+  /** 🔴 OBRIGATÓRIA (F-2.66-11) — ver o bloco acima. `null` = não houve erro. */
+  erro: string | null | undefined;
 }) {
   const usoEsparso = estadoDoUsoEsparso(semanas);
   // maior balde da distribuição, para escalar as barras (nunca 0: divisão por zero).
