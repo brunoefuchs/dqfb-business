@@ -68,6 +68,50 @@ describe('a tela chama os módulos, não uma cópia', () => {
     expect(PAGE).toContain('RESSALVAS_APARELHOS.map');
   });
 
+  it('(2.66/AC7) o card de uso esparso usa `estadoDoUsoEsparso`, não uma cópia', () => {
+    expect(PAGE).toContain('estadoDoUsoEsparso(d.medicao_uso_esparso)');
+    // e o que a tela desenha vem do ESTADO, não de `d.medicao_uso_esparso` direto — que é
+    // o caminho pelo qual a régua voltaria a ser recalculada aqui dentro.
+    expect(PAGE).toMatch(/usoEsparso\.distribuicao\.map\(/);
+    expect(PAGE).toContain('usoEsparso.temSerie');
+  });
+
+  it('🔴 (2.66/AC7) o card distingue os TRÊS estados do sinal', () => {
+    // aceso · apagado · NÃO RESPONDEU. Se `sinalAceso === null` sumir daqui, um sinal que
+    // não respondeu volta a sair como "está tudo bem" — o zero inventado com outra roupa.
+    expect(PAGE).toMatch(/usoEsparso\.sinalAceso === true[\s\S]{0,400}usoEsparso\.sinalAceso === null/);
+    expect(PAGE).toContain('o sinal não respondeu nesta medição');
+  });
+
+  it('🔴 (2.66/AC7) "não medido" e "a leitura falhou" NÃO saem com a mesma frase', () => {
+    // Os dois chegam como campo AUSENTE; só `medicao_uso_esparso_erro` os separa. Sem
+    // isso, uma RPC quebrada se disfarça de "a primeira medição ainda não rodou".
+    expect(PAGE).toContain('medicao_uso_esparso_erro');
+    expect(PAGE).toContain('ainda não medido — a medição roda toda segunda, de madrugada');
+  });
+
+  it('🔴 (2.66/AC7) o card NUNCA afirma ausência de abuso sem medição', () => {
+    // O ramo sem série só pode dizer "ainda não medido" ou nomear a falha de leitura.
+    expect(PAGE).not.toMatch(/ainda não medido[\s\S]{0,200}nenhuma conta passou do limite/);
+  });
+
+  it('🔴 (2.66) na lista de semanas, o SINAL decide antes da CONTAGEM', () => {
+    // Defeito real, achado pelo CodeRabbit em 02/09: `contas_acima_de_3` é NULL-ável. Com a
+    // contagem ausente e o sinal ACESO, a ordem antiga caía no ramo final e escrevia
+    // "ninguém acima do limite" — a tela afirmando o OPOSTO do que o banco disse.
+    // A regex exige `s.sinal_abuso === null` ANTES de `s.contas_acima_de_3` na expressão.
+    expect(PAGE).toMatch(/s\.sinal_abuso === null[\s\S]{0,200}s\.contas_acima_de_3 != null/);
+    expect(PAGE).toContain('acima do limite — quantidade não informada');
+  });
+
+  it('🔴 (2.66/achado 8) o rótulo do ACÚMULO está na tela, junto dos números', () => {
+    // Sem ele, "144 desistências, subindo toda semana" é lido como piora quando é acúmulo
+    // desde o gatilho. As ressalvas do módulo também são renderizadas, não só importadas.
+    expect(PAGE).toContain('acumulado desde 23/08/2026');
+    expect(PAGE).toContain('RESSALVAS_USO_ESPARSO.map');
+    expect(PAGE).toContain('LEGENDA_SINAL_USO_ESPARSO');
+  });
+
   it('a data do card da cota passa por `fmtDataBr`', () => {
     expect(PAGE).toContain('fmtDataBr(mq.periodo_fim)');
   });

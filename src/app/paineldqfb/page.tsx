@@ -47,6 +47,14 @@ import {
   RESSALVAS_SESSOES,
   LEGENDA_OLHAR_SESSAO,
 } from './sessoes';
+import {
+  contasNaSerie,
+  diaCurtoBr,
+  estadoDoUsoEsparso,
+  LEGENDA_SINAL_USO_ESPARSO,
+  RESSALVAS_USO_ESPARSO,
+  type SemanaUsoEsparso,
+} from './uso-esparso';
 import { fmtDataBr } from './data-br';
 
 interface Custo {
@@ -142,6 +150,15 @@ interface Custo {
     menor_intervalo_segundos: number | null;
     ultima_atividade: string | null;
   }[];
+  /* (2.66) série SEMANAL de uso esparso, gravada pelo cron. ADITIVA e opcional.
+     🔴 AUSENTE = nunca medido, e o card diz isso em vez de afirmar "ninguém acima do
+     limite". `medicao_uso_esparso_erro` separa "não apurei" de "tentei e falhei".
+     ⛔ O limite do dono mora no SERVIDOR — `sinal_abuso` chega resolvido. Uma segunda
+     cópia da régua neste repositório PÚBLICO divergiria sem ninguém notar.
+     🔴 O TIPO VEM DO MÓDULO, não é copiado aqui: duas declarações da mesma forma
+     divergem, e a que a tela usa venceria em silêncio. */
+  medicao_uso_esparso?: SemanaUsoEsparso[];
+  medicao_uso_esparso_erro?: string | null;
 }
 interface Fonte {
   tipo?: string;
@@ -1023,6 +1040,11 @@ function ContasView({ d }: { d: Custo }) {
   const regLegal = estadoDoRegistroLegal(d.registro_legal);
   const aparelhos = estadoDosAparelhos(d.aparelhos_resumo);
   const sessoes = estadoDasSessoes(d.sessoes_simultaneas);
+  // (Story 2.66 / AC7) a série semanal de uso esparso. Mesma disciplina dos vizinhos: o
+  // módulo decide, a tela pinta — e mutar o módulo tem de quebrar a tela.
+  const usoEsparso = estadoDoUsoEsparso(d.medicao_uso_esparso);
+  // maior balde da distribuição, para escalar as barras (nunca 0: divisão por zero).
+  const maxBaldeUsoEsparso = Math.max(1, ...usoEsparso.distribuicao.map((b) => b.contas));
   return (
     <>
       {/* (Story 12.B4) Card "Cota de e-mail": consumo do mês vs limite do Mailtrap. */}
@@ -1313,6 +1335,179 @@ function ContasView({ d }: { d: Custo }) {
             </span>
           ))}
           <span style={{ display: 'block', marginTop: 4 }}>{LEGENDA_OLHAR_SESSAO}</span>
+          <span style={{ display: 'block', marginTop: 4 }}>
+            Este quadro <strong>não limita nada</strong> — nenhum acesso é bloqueado por
+            causa dele.
+          </span>
+        </small>
+      </div>
+
+      {/* (Story 2.66 / AC7) Card "Uso esparso de aparelhos" — a série que o cron
+          `medicao_uso_esparso_semanal` grava toda segunda, 05:00 BRT.
+          🔴 Ele mora AQUI, ao lado de "Aparelhos por conta" e "Sessões ao mesmo tempo",
+          porque é a terceira leitura do mesmo par: uma conta aparelho, a outra conta
+          pessoa, esta conta se a conta VOLTA. As três só se leem juntas.
+          ⛔ Nada aqui decide se o sinal acende: o servidor entrega `sinal_abuso` resolvido
+          (o limite do dono não pode morar num repositório público). */}
+      <div className="pdqfb-panel" style={{ marginBottom: 18 }}>
+        <h2>Uso esparso de aparelhos</h2>
+        {usoEsparso.temSerie ? (
+          <>
+            {/* O SINAL, primeiro — é a resposta à pergunta "tem conta compartilhando?" */}
+            <div className="pdqfb-row">
+              <div className="name">
+                {usoEsparso.sinalAceso === true ? (
+                  <>alguma conta passou do limite definido pelo dono</>
+                ) : usoEsparso.sinalAceso === null ? (
+                  /* 🔴 TERCEIRO estado: medi a série, mas o sinal não respondeu. Não é
+                     "tudo bem" — sai como "—", igual ao card do registro legal. */
+                  <>o sinal não respondeu nesta medição</>
+                ) : (
+                  <>nenhuma conta passou do limite definido pelo dono</>
+                )}
+              </div>
+              <div
+                className="v"
+                style={usoEsparso.sinalAceso === true ? { color: '#c0392b' } : undefined}
+              >
+                {/* Rótulo em TEXTO, não só cor (WCAG 1.4.1) — como nos cards irmãos. */}
+                {usoEsparso.sinalAceso === true ? (
+                  <small style={{ marginRight: 6, fontWeight: 600 }}>Olhar</small>
+                ) : null}
+                {usoEsparso.sinalAceso === true ? '!' : usoEsparso.sinalAceso === null ? '—' : '·'}
+              </div>
+            </div>
+
+            {/* A DISTRIBUIÇÃO — o retrato do momento, e o que responde à pergunta. */}
+            <div style={{ marginTop: 14 }}>
+              <small style={{ color: 'var(--ink-3)' }}>
+                Aparelhos confirmados por conta
+                {contasNaSerie(usoEsparso) != null ? (
+                  <> — {contasNaSerie(usoEsparso)!.toLocaleString('pt-BR')} contas</>
+                ) : null}
+              </small>
+              {usoEsparso.distribuicao.map((b) => (
+                <div key={b.aparelhos}>
+                  <div className="pdqfb-row">
+                    <div className="name">
+                      {b.aparelhos === 1 ? '1 aparelho' : `${b.aparelhos} aparelhos`}
+                    </div>
+                    <div className="v">{b.contas.toLocaleString('pt-BR')}</div>
+                  </div>
+                  <div className="pdqfb-bar">
+                    <span
+                      style={{
+                        width: `${Math.round(
+                          (b.contas / Math.max(1, maxBaldeUsoEsparso)) * 100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* A SAÚDE DA COLETA — cumulativa, e o rótulo diz isso na própria linha. */}
+            <div style={{ marginTop: 16 }}>
+              <small style={{ color: 'var(--ink-3)' }}>
+                Saúde da coleta — <strong>acumulado desde 23/08/2026</strong>
+              </small>
+              <div className="pdqfb-row">
+                <div className="name">aparelhos que não voltaram em outro dia</div>
+                <div className="v">
+                  {usoEsparso.atual!.candidatos != null
+                    ? usoEsparso.atual!.candidatos.toLocaleString('pt-BR')
+                    : '—'}
+                </div>
+              </div>
+              <div className="pdqfb-row">
+                <div className="name">destes, a conta nunca voltou (instalou e parou)</div>
+                <div className="v">
+                  {usoEsparso.atual!.desistencia != null
+                    ? usoEsparso.atual!.desistencia.toLocaleString('pt-BR')
+                    : '—'}
+                </div>
+              </div>
+              <div className="pdqfb-row">
+                <div className="name">uso esparso confirmado (voltou em outro aparelho)</div>
+                <div className="v">
+                  {usoEsparso.atual!.esparso_confirmado != null
+                    ? usoEsparso.atual!.esparso_confirmado.toLocaleString('pt-BR')
+                    : '—'}
+                </div>
+              </div>
+              <div className="pdqfb-row">
+                <div className="name">a conta voltou mas nenhum aparelho se moveu</div>
+                <div className="v">
+                  {usoEsparso.atual!.suspeita != null
+                    ? usoEsparso.atual!.suspeita.toLocaleString('pt-BR')
+                    : '—'}
+                </div>
+              </div>
+              <div className="pdqfb-row">
+                <div className="name">aparelhos confirmados desde o início da coleta</div>
+                <div className="v">
+                  {usoEsparso.atual!.pct_confirmado != null
+                    ? `${usoEsparso.atual!.pct_confirmado}%`
+                    : '—'}
+                </div>
+              </div>
+            </div>
+
+            {/* A SÉRIE — as medições anteriores, para ver o movimento. */}
+            {usoEsparso.semanas.length > 1 ? (
+              <div style={{ marginTop: 16 }}>
+                <small style={{ color: 'var(--ink-3)' }}>Medições anteriores</small>
+                {usoEsparso.semanas.slice(1, 9).map((s) => (
+                  <div className="pdqfb-row" key={s.dia}>
+                    <div className="name">{diaCurtoBr(s.dia)}</div>
+                    <div className="v">
+                      {/* 🔴 O SINAL MANDA, NÃO A CONTAGEM — e a ordem destes ramos é o
+                          conserto de um defeito real (CodeRabbit, 02/09). `contas_acima_de_3`
+                          é NULL-ável: com a contagem ausente e o sinal ACESO, a versão
+                          anterior caía no ramo final e escrevia "ninguém acima do limite",
+                          afirmando na tela o OPOSTO do que o banco disse. Quem decide é
+                          `sinal_abuso`; a contagem só detalha quando existe. */}
+                      {s.sinal_abuso === null
+                        ? '—'
+                        : s.contas_acima_de_3 != null && s.contas_acima_de_3 > 0
+                          ? `${s.contas_acima_de_3} acima do limite`
+                          : s.sinal_abuso === true
+                            ? 'acima do limite — quantidade não informada'
+                            : 'ninguém acima do limite'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : d.medicao_uso_esparso_erro ? (
+          /* 🔴 SEGUNDO estado: a leitura QUEBROU. Frase diferente da de baixo, de
+             propósito — "não apurei" e "tentei e falhei" pedem ações diferentes. */
+          <div className="pdqfb-row">
+            <div className="name">
+              a leitura falhou ({d.medicao_uso_esparso_erro}) — o card não afirma nada
+              enquanto isso
+            </div>
+            <div className="v">—</div>
+          </div>
+        ) : (
+          /* 🔴 PRIMEIRO estado: NADA foi medido ainda. ⛔ Isto NÃO é "ninguém está acima
+             do limite" — a medição roda 1× por semana e a primeira pode não ter rodado. */
+          <div className="pdqfb-row">
+            <div className="name">
+              ainda não medido — a medição roda toda segunda, de madrugada
+            </div>
+            <div className="v">—</div>
+          </div>
+        )}
+        <small style={{ display: 'block', marginTop: 8, color: 'var(--ink-3)' }}>
+          {RESSALVAS_USO_ESPARSO.map((r, i) => (
+            <span key={i} style={{ display: 'block', marginTop: i ? 4 : 0 }}>
+              ⚠️ {r}
+            </span>
+          ))}
+          <span style={{ display: 'block', marginTop: 4 }}>{LEGENDA_SINAL_USO_ESPARSO}</span>
           <span style={{ display: 'block', marginTop: 4 }}>
             Este quadro <strong>não limita nada</strong> — nenhum acesso é bloqueado por
             causa dele.
