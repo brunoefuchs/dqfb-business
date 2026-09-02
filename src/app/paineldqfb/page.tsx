@@ -2543,7 +2543,7 @@ function LuPropostaCard({
 }
 
 const CSS = `
-.pdqfb-wrap{--pinky:#CE3B87;--velvet:#881D28;--cream-200:#F5E6E8;--off:#F8F4F3;--paper:#FFFFFF;--ink:#1A1416;--ink-2:#4E3F44;--ink-3:#8E7E83;--ink-4:#C9BDC0;--hairline:rgba(26,20,22,0.08);--success:#2F7A5A;--pink-300:#E07AAE;
+.pdqfb-wrap,.pdqfb-login{--pinky:#CE3B87;--velvet:#881D28;--cream-200:#F5E6E8;--off:#F8F4F3;--paper:#FFFFFF;--ink:#1A1416;--ink-2:#4E3F44;--ink-3:#8E7E83;--ink-4:#C9BDC0;--hairline:rgba(26,20,22,0.08);--success:#2F7A5A;--pink-300:#E07AAE;
   max-width:1100px;margin:0 auto;padding:28px 24px 64px;color:var(--ink);background:var(--off);min-height:100vh;font-family:var(--font-manrope),-apple-system,Helvetica,Arial,sans-serif;}
 .pdqfb-wrap *{box-sizing:border-box;}
 .pdqfb-top{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px;}
