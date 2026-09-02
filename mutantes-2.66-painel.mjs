@@ -382,6 +382,36 @@ const MUTANTES = [
     asercao: 'F-11 + F-12 · omissão da prop COM decoy: guarda vermelha E `TS2741`',
   },
   {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🔴 O ATAQUE DE TRÊS PASSOS DA `@qa` (F-2.66-13), reaplicado.
+    //
+    // Nenhum passo sozinho passa; só a COMBINAÇÃO abria a porta:
+    //   1. `import { UsoEsparsoCard as Card }` — a montagem real perde o nome;
+    //   2. `erro={undefined}` — o `tsc` aceita, porque é parte do tipo declarado;
+    //   3. o texto do elemento dentro de uma STRING JSX — vira a ÚNICA ocorrência de
+    //      `<UsoEsparsoCard`, satisfazendo a unicidade E fornecendo a fatia inteira.
+    //
+    // O discriminador que fecha é de FORMA, não de conteúdo: montagem começa uma linha de
+    // JSX; decoy em string vem precedido de `{'`.
+    // ⛔ E a FRONTEIRA está declarada no cabeçalho de `fatiaDoCard()`: daqui em diante a
+    // garantia vem do teste de DOM e da revisão, não de mais heurística de texto.
+    // ═══════════════════════════════════════════════════════════════════════════
+    id: 'P21 · F-2.66-13 — alias no import + `erro={undefined}` + decoy em STRING JSX',
+    arquivo: PAGE, teste: T_FIACAO,
+    aplica: (s) => s
+      .replace(
+        "import { UsoEsparsoCard } from './uso-esparso-card';",
+        "import { UsoEsparsoCard as Card } from './uso-esparso-card';",
+      )
+      .replace(
+        '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+        "      {'<UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />'}\n" +
+          '      <Card semanas={d.medicao_uso_esparso} erro={undefined} />',
+      ),
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'F-13 · três passos combinados; cada um sozinho já era pego',
+  },
+  {
     // 🔴 SENTINELA. A `@qa` plantou uma na revisão dela (QP0, palavra de comentário) e ela
     // sobreviveu, como tinha de ser. Aqui a sentinela é PERMANENTE: se ela morder, a
     // bancada está matando tudo e nenhum «MORDEU» acima significa alguma coisa.

@@ -24,6 +24,31 @@ import { describe, expect, it } from 'vitest';
 const PAGE = readFileSync(resolve(process.cwd(), 'src/app/paineldqfb/page.tsx'), 'utf8');
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ⛔ FRONTEIRA DECLARADA — A GUARDA DE TEXTO SOBRE O `page.tsx` PARA AQUI.
+ *
+ * Esta função caiu QUATRO vezes nesta story, e cada queda foi mais barroca que a anterior:
+ * F-02 (defeito no JSX, frases num comentário) · F-11 (prop removida, decoy no comentário)
+ * · F-12 (a ordem entre limpar e ancorar) · F-13 (alias no import + `erro={undefined}` +
+ * decoy em string JSX, três passos combinados).
+ *
+ * 🔴 **Nenhuma heurística de texto a mais entra aqui.** Cada rodada mostrou que uma leitura
+ * de fonte é derrotável por alguém disposto a compor passos, e correr atrás disso vira uma
+ * corrida sem linha de chegada — com o custo de uma guarda cada vez mais difícil de
+ * entender, que é o oposto do que uma guarda serve.
+ *
+ * **O que esta função afirma, e é tudo o que ela afirma:** que a aba Contas monta um
+ * elemento `<UsoEsparsoCard`, começando uma linha de JSX, com as duas props escritas.
+ *
+ * **De onde vem a garantia daqui em diante:**
+ *   1. o **teste de DOM** do card (`uso-esparso-card.test.tsx`), que RENDERIZA e afirma
+ *      sobre o que aparece na tela — imune a decoy, porque comentário e string não viram DOM;
+ *   2. o **`tsc`**, para o eixo da OMISSÃO de prop (`TS2741`) — mas não para o do VALOR,
+ *      porque `erro={undefined}` é parte do tipo;
+ *   3. a **revisão humana** do diff, para o resto — renomear o import e mover a montagem
+ *      para outro lugar é uma mudança VISÍVEL, e é onde ela deve ser pega.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
  * 🔴 Recorta SÓ o bloco do card de uso esparso, entre âncoras — nunca o arquivo inteiro.
  *
  * A lição de F-2.66-02: `expect(PAGE).toMatch(…)` prova que o texto existe EM ALGUM LUGAR
@@ -50,19 +75,34 @@ function fatiaDoCard(): string {
   // NORMALIZADO antes de qualquer busca, não depois.
   const limpo = semComentarios(PAGE);
 
-  // 🔬 E a âncora tem de ser ÚNICA. Duas montagens (ou uma string sobrevivente) fariam a
-  // fatia ser a errada em silêncio — o mesmo defeito de "substituição que casa noutro
-  // lugar", agora do lado da leitura.
-  const ocorrencias = limpo.split('<UsoEsparsoCard').length - 1;
+  // 🔴 A ÂNCORA TEM DE COMEÇAR UMA LINHA DE JSX (F-2.66-13) — `^[ \t]*<UsoEsparsoCard`.
+  //
+  // A `@qa` montou um caminho de TRÊS passos combinados que passava por tudo: (1) `import
+  // { UsoEsparsoCard as Card }`, de modo que a montagem real virou `<Card …>` e o nome
+  // sumiu dela; (2) `erro={undefined}` na tela, que o `tsc` aceita porque é parte do tipo;
+  // (3) o texto do elemento dentro de uma STRING JSX, que passou a ser a ÚNICA ocorrência
+  // de `<UsoEsparsoCard` — satisfazendo a unicidade E fornecendo a fatia inteira.
+  // ⚠️ Cada passo sozinho era pego; só os três juntos abriam a porta.
+  //
+  // O discriminador é barato e é de FORMA, não de conteúdo: uma montagem JSX começa a
+  // linha (só indentação antes dela); um decoy dentro de string vem precedido de `{'` ou
+  // `{"`. Uma âncora, não uma heurística nova.
+  const RE_MONTAGEM = /^[ \t]*<UsoEsparsoCard\b/gm;
+
+  // 🔬 E a âncora tem de ser ÚNICA — pela MESMA régua da busca, senão a contagem e o
+  // recorte mediriam coisas diferentes. Duas montagens fariam a fatia ser a errada em
+  // silêncio: é "substituição que casa noutro lugar", do lado da leitura.
+  const ocorrencias = limpo.match(RE_MONTAGEM)?.length ?? 0;
   if (ocorrencias !== 1) {
     throw new Error(
-      `esperava UMA montagem de <UsoEsparsoCard no page.tsx limpo, achei ${ocorrencias} — ` +
-        'a fatia seria a errada sem ninguém notar',
+      `esperava UMA montagem de <UsoEsparsoCard começando linha no page.tsx limpo, achei ` +
+        `${ocorrencias} — a fatia seria a errada sem ninguém notar`,
     );
   }
 
-  const i = limpo.indexOf('<UsoEsparsoCard');
-  if (i < 0) throw new Error('âncora inicial do card de uso esparso não casou no page.tsx');
+  const casou = /^[ \t]*(<UsoEsparsoCard\b)/m.exec(limpo);
+  if (!casou) throw new Error('âncora inicial do card de uso esparso não casou no page.tsx');
+  const i = casou.index + casou[0].indexOf('<');
   const j = limpo.indexOf('/>', i);
   if (j < 0) throw new Error('âncora final do card de uso esparso não casou no page.tsx');
   return limpo.slice(i, j + 2);
@@ -187,6 +227,20 @@ describe('a tela chama os módulos, não uma cópia', () => {
     // e não sobra comentário nenhum dentro dela
     expect(trecho).not.toContain('/*');
     expect(trecho).not.toContain('//');
+  });
+
+  it('🔴 (2.66/F-13) a âncora é a montagem que COMEÇA linha, não texto dentro de string', () => {
+    // O caminho de três passos da `@qa`: com `import { UsoEsparsoCard as Card }`, a
+    // montagem real perde o nome, e um decoy em string JSX vira a única ocorrência —
+    // satisfazendo a unicidade E fornecendo a fatia. O discriminador é de FORMA: montagem
+    // começa linha (só indentação antes); decoy em string vem precedido de `{'`.
+    const re = /^[ \t]*<UsoEsparsoCard\b/gm;
+    expect("      <UsoEsparsoCard semanas={x} />".match(re)?.length ?? 0).toBe(1);
+    // 🔬 e o par NEGATIVO, que é o ataque: dentro de string, a mesma busca não casa
+    re.lastIndex = 0;
+    expect("      {'<UsoEsparsoCard erro={d.medicao_uso_esparso_erro} />'}".match(re)).toBeNull();
+    re.lastIndex = 0;
+    expect('      {"<UsoEsparsoCard erro={d.x} />"}'.match(re)).toBeNull();
   });
 
   it('🔬 (2.66/F-11) o limpador de comentários FUNCIONA — controle do instrumento', () => {
