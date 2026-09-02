@@ -2,91 +2,154 @@
 /**
  * Bancada de MUTAÇÃO do painel — Story 2.66 / AC7 (`.claude/rules/test-must-prove.md`).
  *
- * Prova as duas metades que o AC7 exige, e elas medem coisas diferentes:
+ * Prova as três metades que o AC7 exige, e elas medem coisas diferentes:
  *
  *   1. **mutar o MÓDULO** (`uso-esparso.ts`) tem de vermelhar `uso-esparso.test.ts`;
- *   2. **voltar a calcular inline no `page.tsx`** tem de vermelhar `page-fiacao.test.ts`.
+ *   2. **mutar o CARD** (`uso-esparso-card.tsx`) tem de vermelhar `uso-esparso-card.test.tsx`,
+ *      que RENDERIZA e afirma sobre o DOM;
+ *   3. **desligar o card da tela** tem de vermelhar a guarda de fiação em `page-fiacao.test.ts`.
  *
- * Sem a segunda, o defeito clássico deste repositório volta: o teste exercita um módulo, a
+ * Sem a terceira, o defeito clássico deste repositório volta: o teste exercita um módulo, a
  * tela calcula a mesma coisa por dentro, e os dois ficam verdes sem nunca se falarem —
  * aconteceu três vezes aqui (2.19, 2.21 e a 1ª versão da 12.B4).
  *
- * 🔴 A BANCADA É VERSIONADA de propósito. Bancada em pasta temporária se perde entre
- *    sessões, e o mutante vira uma frase na story em vez de uma prova reexecutável.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * 🔴 A BANCADA MUTA UMA CÓPIA, NUNCA O ARQUIVO RASTREADO — conserto de F-2.66-01
  *
- * 🔴 O ARQUIVO REAL É RESTAURADO POR HASH depois de CADA mutante, não "no fim". Se a
- *    restauração falhar, o processo aborta gritando — deixar um mutante no fonte é pior
- *    que não rodar a bancada.
+ * As duas versões anteriores escreviam o mutante DENTRO de `src/app/paineldqfb/` e tentavam
+ * restaurar na saída. Nenhuma das duas funcionou, e a `@qa` provou:
+ *
+ *   v1: só `process.on('exit')`. Um `timeout` externo matou a bancada com SIGTERM no 10º
+ *       mutante e o P10 ficou dentro do `page.tsx`.
+ *   v2: handlers de `SIGINT`/`SIGTERM`/`SIGHUP`. **Também não segura** — Node só executa
+ *       handler de sinal quando o event loop está livre, e o laço fica DENTRO de
+ *       `execFileSync('npx', ['vitest', …])`, que bloqueia por ~45 s. A `@qa` mandou
+ *       SIGTERM, o processo seguiu vivo 20 s e, depois do SIGKILL, o mutante P5 continuava
+ *       em `uso-esparso.ts`. **Trocar de gancho não resolve: o problema é o bloqueio.**
+ *
+ * O `dqfb-business` faz deploy automático na Vercel ao push da `main`. Um `git add -A`
+ * depois de uma bancada interrompida publica o mutante em produção.
+ *
+ * A prior-art estava na própria story: `supabase/functions/admin-painel/_tests/2.66-mutantes.mjs`
+ * (app-dqfb) copia a árvore para `mkdtempSync` e muta a CÓPIA. Aqui é o mesmo, com uma
+ * diferença de ambiente: o Vitest precisa de `node_modules`, então a cópia leva `src/` e as
+ * configs, e `node_modules` entra por LIGAÇÃO SIMBÓLICA (copiar 400 MB por mutante seria
+ * inviável, e o link é só de leitura para o Vitest).
+ *
+ * 🔬 Assim, sinal nenhum pode sujar o fonte: o arquivo rastreado NUNCA é aberto para
+ *    escrita. O mutante da `@qa` (matar a bancada no meio) passa a ser inofensivo por
+ *    CONSTRUÇÃO, não por handler — e o `verificarIntocado()` confere isso por hash a cada
+ *    mutante e no fim.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠️ Um resíduo declarado: matar a bancada com `SIGKILL` deixa o diretório temporário para
+ *    trás (o `finally` não roda). É lixo em `/tmp`, fora do repositório — nunca o fonte. Foi
+ *    medido ao reaplicar o mutante da `@qa`, e é a diferença entre "sujou o /tmp" e "sujou o
+ *    que vai para a Vercel".
+ *
+ * 🔴 A RODADA BASE VEM PRIMEIRO (conserto de F-2.66-03). Sem ela, «N/N morderam» sairia
+ *    igual com a base quebrada — com a base quebrada TODO mutante «morde». Se a base não
+ *    vier verde, a bancada ABORTA sem rodar mutante nenhum.
  *
  * Rodar (da raiz do dqfb-business):
  *   node mutantes-2.66-painel.mjs
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 const MODULO = 'src/app/paineldqfb/uso-esparso.ts';
+const CARD = 'src/app/paineldqfb/uso-esparso-card.tsx';
 const PAGE = 'src/app/paineldqfb/page.tsx';
 
-const original = new Map([
+const T_MODULO = 'src/app/paineldqfb/uso-esparso.test.ts';
+const T_CARD = 'src/app/paineldqfb/uso-esparso-card.test.tsx';
+const T_FIACAO = 'src/app/paineldqfb/page-fiacao.test.ts';
+
+/** O que a cópia precisa para o Vitest rodar. `node_modules` entra por symlink. */
+const COPIAR = ['src', 'package.json', 'vitest.config.ts', 'tsconfig.json'];
+
+const base = new Map([
   [MODULO, readFileSync(MODULO, 'utf8')],
+  [CARD, readFileSync(CARD, 'utf8')],
   [PAGE, readFileSync(PAGE, 'utf8')],
 ]);
 const sha = (s) => createHash('sha256').update(s).digest('hex');
-const hashOriginal = new Map([...original].map(([k, v]) => [k, sha(v)]));
+const hashBase = new Map([...base].map(([k, v]) => [k, sha(v)]));
 
-/** Restaura e CONFERE. Um `writeFileSync` que não deu certo é silencioso. */
-function restaurar() {
-  for (const [arquivo, texto] of original) {
-    writeFileSync(arquivo, texto);
+/**
+ * 🔬 A prova de que o conserto de F-2.66-01 vale: os arquivos RASTREADOS não mudaram de
+ * hash. É barata, e é a única asserção que sustenta a frase "a bancada não suja o fonte" —
+ * afirmá-la sem medir seria exatamente o erro que F-2.66-01 pune.
+ */
+function verificarIntocado(quando) {
+  for (const [arquivo, hash] of hashBase) {
     const agora = sha(readFileSync(arquivo, 'utf8'));
-    if (agora !== hashOriginal.get(arquivo)) {
-      console.error(`\n🔴🔴 ${arquivo} NÃO VOLTOU AO ORIGINAL. Restaure à mão antes de commitar.`);
+    if (agora !== hash) {
+      console.error(
+        `\n🔴🔴 ${arquivo} MUDOU (${quando}). A bancada deveria mutar só a cópia — ` +
+          'restaure com `git checkout --` e NÃO commite.',
+      );
       process.exit(2);
     }
   }
 }
-/**
- * 🔴 REDE DE SEGURANÇA, E ELA PRECISA DOS SINAIS — não só de `exit`.
- *
- * A primeira versão tinha só `process.on('exit')`, e isso NÃO BASTOU: um `timeout` externo
- * de 10 minutos matou a bancada no meio do 10º mutante com SIGTERM, o handler de `exit`
- * nunca rodou, e o mutante P10 FICOU no `page.tsx`. Só apareceu porque a conferência
- * seguinte procurou a frase original e achou zero — mais um passo e teria sido commitado.
- * É o parente do [[timeout-em-bancada-docker-pula-a-limpeza]]: interrupção externa pula a
- * limpeza, e sem mensagem de erro.
- */
-function socorro(motivo) {
-  let mexeu = false;
-  for (const [arquivo, texto] of original) {
-    try {
-      if (sha(readFileSync(arquivo, 'utf8')) !== hashOriginal.get(arquivo)) {
-        writeFileSync(arquivo, texto);
-        mexeu = true;
-      }
-    } catch { /* nada a fazer na saída */ }
-  }
-  if (mexeu) console.error(`\n⚠️  ${motivo}: fonte(s) restaurado(s) pela rede de segurança.`);
+
+/** Monta uma árvore descartável com o mutante dentro. Devolve a raiz. */
+function copiaComMutante(arquivo, texto) {
+  const raiz = mkdtempSync(join(tmpdir(), 'mut-2.66-painel-'));
+  for (const alvo of COPIAR) cpSync(alvo, join(raiz, alvo), { recursive: true });
+  // 🔴 `node_modules` por LIGAÇÃO, não por cópia: são centenas de MB e o Vitest só lê.
+  symlinkSync(resolve('node_modules'), join(raiz, 'node_modules'), 'dir');
+  if (arquivo) writeFileSync(join(raiz, arquivo), texto);
+  return raiz;
 }
-process.on('exit', () => socorro('saída'));
-for (const sinal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-  process.on(sinal, () => { socorro(sinal); process.exit(130); });
+
+/**
+ * Roda SÓ o arquivo de teste que o mutante visa. O startup do Vitest (jsdom) domina o
+ * tempo, e rodar a pasta inteira a cada mutante estourava dez minutos.
+ */
+function rodarVitest(raiz, arquivoTeste) {
+  try {
+    return {
+      ok: true,
+      saida: execFileSync('npx', ['vitest', 'run', arquivoTeste], {
+        encoding: 'utf8', cwd: raiz, stdio: ['pipe', 'pipe', 'pipe'],
+      }),
+    };
+  } catch (e) {
+    return { ok: false, saida: (e.stdout || '') + (e.stderr || '') };
+  }
+}
+
+/**
+ * 🔴 Crédito da mordida pela régua ESTRITA (conserto de F-2.66-07).
+ *
+ * A versão anterior casava a marca na saída INTEIRA do Vitest, que inclui o *code frame*
+ * do teste que falhou — um `it()` vizinho impresso ali creditava a asserção errada. A
+ * bancada da edge já fazia certo (extrai os nomes das linhas `FAILED`); aqui é o mesmo,
+ * com o formato do Vitest: as linhas de falha vêm marcadas com `×` ou `FAIL`.
+ */
+function testesQueVermelharam(saida) {
+  return saida
+    .split('\n')
+    .filter((l) => /(^|\s)(×|✗|FAIL)\s/.test(l))
+    .map((l) => l.replace(/^\s*[×✗]\s*/, '').replace(/^\s*FAIL\s*/, '').trim());
 }
 
 const MUTANTES = [
   {
     id: 'P1 · AC7 — `estadoDoUsoEsparso` devolve CONSTANTE (o módulo para de medir)',
-    arquivo: MODULO,
-    aplica: (s) => s.replace(
-      '  if (!semanas || semanas.length === 0) {',
-      '  if (true) {',
-    ),
-    marca: 'série presente ⇒ a semana mais recente é a `atual`, com o sinal do BANCO',
+    arquivo: MODULO, teste: T_MODULO,
+    aplica: (s) => s.replace('  if (!semanas || semanas.length === 0) {', '  if (true) {'),
+    marca: 'série presente ⇒ a PRIMEIRA linha é a `atual` (a ordem é contrato do banco)',
     asercao: 'AC7 · o módulo decide de verdade — não devolve o mesmo estado sempre',
   },
   {
     id: 'P2 · AC7 — sinal não-booleano vira `false` (o falso inventado)',
-    arquivo: MODULO,
+    arquivo: MODULO, teste: T_MODULO,
     aplica: (s) => s.replace(
       "    sinalAceso: typeof atual.sinal_abuso === 'boolean' ? atual.sinal_abuso : null,",
       '    sinalAceso: !!atual.sinal_abuso,',
@@ -96,7 +159,7 @@ const MUTANTES = [
   },
   {
     id: 'P3 · D4 — a régua do dono é RECALCULADA no painel (repositório PÚBLICO)',
-    arquivo: MODULO,
+    arquivo: MODULO, teste: T_MODULO,
     aplica: (s) => s.replace(
       "    sinalAceso: typeof atual.sinal_abuso === 'boolean' ? atual.sinal_abuso : null,",
       '    sinalAceso: (atual.contas_acima_de_3 ?? 0) > 3,',
@@ -106,7 +169,7 @@ const MUTANTES = [
   },
   {
     id: 'P4 · AC7 — `contasNaSerie` devolve 0 em vez de `null` sem série',
-    arquivo: MODULO,
+    arquivo: MODULO, teste: T_MODULO,
     aplica: (s) => s.replace(
       '  if (!e.temSerie || e.distribuicao.length === 0) return null;',
       '  if (!e.temSerie || e.distribuicao.length === 0) return 0;',
@@ -116,17 +179,17 @@ const MUTANTES = [
   },
   {
     id: 'P5 · AC7 — `distribuicaoOrdenada` deixa de filtrar chave não-inteira',
-    arquivo: MODULO,
+    arquivo: MODULO, teste: T_MODULO,
     aplica: (s) => s.replace(
-      '    .filter(([k, v]) => /^\\d+$/.test(k) && typeof v === \'number\' && Number.isFinite(v))',
-      '    .filter(([, v]) => typeof v === \'number\')',
+      "    .filter(([k, v]) => /^\\d+$/.test(k) && typeof v === 'number' && Number.isFinite(v))",
+      "    .filter(([, v]) => typeof v === 'number')",
     ),
     marca: 'chave que não é inteiro é DESCARTADA, nunca convertida para 0',
     asercao: 'AC7 · `Number("abc")` é NaN e contaminaria o balde mais cheio',
   },
   {
     id: 'P6 · AC7 — `diaCurtoBr` passa por `new Date` (volta um dia no fuso BR)',
-    arquivo: MODULO,
+    arquivo: MODULO, teste: T_MODULO,
     aplica: (s) => s.replace(
       '  return m ? `${m[3]}/${m[2]}` : dia;',
       "  return m ? new Date(dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : dia;",
@@ -135,117 +198,236 @@ const MUTANTES = [
     asercao: 'AC7 · o dia gravado JÁ é o dia de calendário BR',
   },
   {
-    id: 'P7 · AC7 (fiação) — a tela volta a CALCULAR inline, sem chamar o módulo',
-    arquivo: PAGE,
+    // 🔴 O MUTANTE DO ACHADO MAJOR DO CODERABBIT, agora na função pura. É o QP5 da `@qa`
+    // levado ao lugar onde a regra mora — e por isso não há como satisfazê-lo com um
+    // comentário: o teste unitário chama a função e lê o retorno.
+    id: 'P7 · CR-1 — a CONTAGEM volta a decidir antes do SINAL em `rotuloDaSemana`',
+    arquivo: MODULO, teste: T_MODULO,
     aplica: (s) => s.replace(
-      '  const usoEsparso = estadoDoUsoEsparso(d.medicao_uso_esparso);',
-      '  const usoEsparso = { temSerie: !!d.medicao_uso_esparso?.length, semSerie: !d.medicao_uso_esparso?.length, semanas: d.medicao_uso_esparso ?? [], atual: d.medicao_uso_esparso?.[0] ?? null, sinalAceso: !!d.medicao_uso_esparso?.[0]?.sinal_abuso, distribuicao: [] as Array<{ aparelhos: number; contas: number }> };',
+      `  if (typeof s.sinal_abuso !== 'boolean') return '—';
+  if (s.contas_acima_de_3 != null && s.contas_acima_de_3 > 0) {
+    return \`\${s.contas_acima_de_3} acima do limite\`;
+  }
+  if (s.sinal_abuso === true) return 'acima do limite — quantidade não informada';
+  return 'ninguém acima do limite';`,
+      `  if (s.contas_acima_de_3 != null && s.contas_acima_de_3 > 0) {
+    return \`\${s.contas_acima_de_3} acima do limite\`;
+  }
+  if (typeof s.sinal_abuso !== 'boolean') return '—';
+  return 'ninguém acima do limite';`,
     ),
-    marca: 'o card de uso esparso usa `estadoDoUsoEsparso`, não uma cópia',
-    asercao: 'AC7 · mutar o módulo tem de quebrar a TELA — senão o módulo não é o que está no ar',
+    marca: 'sinal ACESO com contagem NULA nunca diz «ninguém acima do limite»',
+    asercao: 'CR-1 · a tela afirmaria o OPOSTO do que o banco disse',
   },
   {
-    id: 'P8 · AC7 (fiação) — o terceiro estado do sinal some da tela',
-    arquivo: PAGE,
+    // 🔴 O MESMO defeito, agora medido no DOM RENDERIZADO. Este é o mutante que a versão
+    // anterior da guarda NÃO pegava: a `@qa` pôs o defeito no JSX e as frases num
+    // comentário, e 15/15 ficaram verdes. Aqui o card é renderizado e comentário não entra
+    // no DOM.
+    id: 'P8 · F-2.66-02 — o card ignora `rotuloDaSemana` e volta a decidir no JSX',
+    arquivo: CARD, teste: T_CARD,
     aplica: (s) => s.replace(
-      '                ) : usoEsparso.sinalAceso === null ? (\n                  /* 🔴 TERCEIRO estado: medi a série, mas o sinal não respondeu. Não é\n                     "tudo bem" — sai como "—", igual ao card do registro legal. */\n                  <>o sinal não respondeu nesta medição</>\n',
-      '                ) : false ? (\n                  <>—</>\n',
+      '                  <div className="v">{rotuloDaSemana(s)}</div>',
+      "                  <div className=\"v\">{s.contas_acima_de_3 != null && s.contas_acima_de_3 > 0 ? `${s.contas_acima_de_3} acima do limite` : s.sinal_abuso === null ? '—' : 'ninguém acima do limite'}</div>",
     ),
-    marca: 'o card distingue os TRÊS estados do sinal',
-    asercao: 'AC7 · sinal que não respondeu volta a sair como "está tudo bem"',
+    marca: 'sinal ACESO com contagem NULA nunca escreve «ninguém acima do limite»',
+    asercao: 'F-2.66-02 · o defeito no JSX tem de vermelhar, e comentário não salva',
   },
   {
-    id: 'P9 · AC7 (fiação) — o rótulo do ACÚMULO sai do card',
-    arquivo: PAGE,
+    // 🔴 F-2.66-09: o SELO colapsando `null` no glifo de "tudo bem", com o TEXTO intacto.
+    // Sobreviveu na versão anterior porque a guarda casava no primeiro par e parava.
+    id: 'P9 · F-2.66-09 — no SELO, `null` colapsa em `·` (o glifo de "tudo bem")',
+    arquivo: CARD, teste: T_CARD,
     aplica: (s) => s.replace(
-      '                Saúde da coleta — <strong>acumulado desde 23/08/2026</strong>',
-      '                Saúde da coleta',
+      "              {usoEsparso.sinalAceso === true ? '!' : usoEsparso.sinalAceso === null ? '—' : '·'}",
+      "              {usoEsparso.sinalAceso === true ? '!' : '·'}",
     ),
-    marca: 'o rótulo do ACÚMULO está na tela, junto dos números',
+    marca: 'o selo de "sem resposta" NÃO é o mesmo de "tudo bem"',
+    asercao: 'F-2.66-09 · texto e selo têm de dizer a MESMA coisa nos três estados',
+  },
+  {
+    // 🔴 F-2.66-10: a lista encolhe e ninguém reclama.
+    id: 'P10 · F-2.66-10 — a lista de medições anteriores encolhe de 8 para 1',
+    arquivo: CARD, teste: T_CARD,
+    aplica: (s) => s.replace(
+      '{usoEsparso.semanas.slice(1, 1 + MAX_MEDICOES_ANTERIORES).map((s) => (',
+      '{usoEsparso.semanas.slice(1, 2).map((s) => (',
+    ),
+    marca: 'emite no máximo 8 semanas, e pula a atual',
+    asercao: 'F-2.66-10 · a cardinalidade do que a tela EMITE, não só a decisão do módulo',
+  },
+  {
+    id: 'P11 · AC7 — o rótulo do ACÚMULO sai do card',
+    arquivo: CARD, teste: T_CARD,
+    aplica: (s) => s.replace(
+      '              Saúde da coleta — <strong>acumulado desde 23/08/2026</strong>',
+      '              Saúde da coleta',
+    ),
+    marca: 'a saúde da coleta diz "acumulado desde 23/08/2026" na própria linha',
     asercao: 'achado 8 · sem o rótulo, acúmulo é lido como deterioração',
   },
   {
-    id: 'P10 · AC7 (fiação) — "não medido" passa a usar a MESMA frase da falha de leitura',
-    arquivo: PAGE,
+    id: 'P12 · AC7 — "não medido" passa a usar a MESMA frase da falha de leitura',
+    arquivo: CARD, teste: T_CARD,
     aplica: (s) => s.replace(
-      '              ainda não medido — a medição roda toda segunda, de madrugada',
-      '              a leitura falhou — o card não afirma nada enquanto isso',
+      '          <div className="name">ainda não medido — a medição roda toda segunda, de madrugada</div>',
+      '          <div className="name">a leitura falhou — o card não afirma nada enquanto isso</div>',
     ),
-    marca: '"não medido" e "a leitura falhou" NÃO saem com a mesma frase',
+    marca: 'nunca medido: diz que a medição roda toda segunda',
     asercao: 'AC7 · uma RPC quebrada se disfarçaria de "a 1ª medição ainda não rodou"',
   },
   {
-    // 🔴 O mutante do achado do CodeRabbit (02/09): volta a ordem antiga, em que a
-    // CONTAGEM decide antes do SINAL. Sem ele, o conserto não tem detector.
-    id: 'P11 · AC7 (fiação) — a CONTAGEM volta a decidir antes do SINAL na lista de semanas',
-    arquivo: PAGE,
+    // 🔴 A METADE DA FIAÇÃO: o card perfeito que a tela não monta entrega ZERO.
+    id: 'P13 · AC7 (fiação) — a tela deixa de montar o `UsoEsparsoCard`',
+    arquivo: PAGE, teste: T_FIACAO,
     aplica: (s) => s.replace(
-      `                      {s.sinal_abuso === null
-                        ? '—'
-                        : s.contas_acima_de_3 != null && s.contas_acima_de_3 > 0
-                          ? \`\${s.contas_acima_de_3} acima do limite\`
-                          : s.sinal_abuso === true
-                            ? 'acima do limite — quantidade não informada'
-                            : 'ninguém acima do limite'}`,
-      `                      {s.contas_acima_de_3 != null && s.contas_acima_de_3 > 0
-                        ? \`\${s.contas_acima_de_3} acima do limite\`
-                        : s.sinal_abuso === null
-                          ? '—'
-                          : 'ninguém acima do limite'}`,
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+      '      {null}',
     ),
-    marca: 'na lista de semanas, o SINAL decide antes da CONTAGEM',
-    asercao: 'AC7 · sinal ACESO com contagem nula sairia como "ninguém acima do limite"',
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'AC7 · um card testado que ninguém monta não está no ar',
+  },
+  {
+    // 🔴 A prop de erro some: "nunca medido" e "a leitura quebrou" voltam a colapsar.
+    id: 'P14 · AC7 (fiação) — a prop `erro` some da montagem',
+    arquivo: PAGE, teste: T_FIACAO,
+    aplica: (s) => s.replace(
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} erro={d.medicao_uso_esparso_erro} />',
+      '      <UsoEsparsoCard semanas={d.medicao_uso_esparso} />',
+    ),
+    marca: 'a aba Contas monta o `UsoEsparsoCard`, com as DUAS props',
+    asercao: 'AC7 · sem a prop de erro os dois estados de ausência voltam a colapsar',
+  },
+  {
+    // 🔴 SENTINELA. A `@qa` plantou uma na revisão dela (QP0, palavra de comentário) e ela
+    // sobreviveu, como tinha de ser. Aqui a sentinela é PERMANENTE: se ela morder, a
+    // bancada está matando tudo e nenhum «MORDEU» acima significa alguma coisa.
+    id: 'S1 · SENTINELA — troca uma palavra de COMENTÁRIO no card (tem de SOBREVIVER)',
+    arquivo: CARD, teste: T_CARD,
+    aplica: (s) => s.replace('* Story 2.66 (AC7) — o card', '* Story 2.66 (AC-7) — o card'),
+    sentinela: true,
+    asercao: 'controle do instrumento · mutação sem efeito não pode ser creditada',
   },
 ];
 
-/**
- * Roda SÓ o arquivo de teste que o mutante visa. O startup do `vitest` (jsdom) domina o
- * tempo, e rodar a pasta inteira 11 vezes estourava dez minutos — foi o que provocou a
- * interrupção que deixou um mutante no fonte.
- */
-function rodarVitest(arquivoTeste) {
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔬 CONTROLE DO INSTRUMENTO DA CÓPIA — antes de tudo, e é barato
+//
+// `verificarIntocado()` afirma que o fonte rastreado não mudou. Sozinha, essa afirmação é
+// satisfeita por uma bancada que **não muta nada** — o falso verde dentro do medidor de
+// falso verde. Este bloco prova o outro lado: a cópia REALMENTE recebe o mutante, e o
+// fonte NÃO. As duas metades juntas é que sustentam a frase.
+// ═══════════════════════════════════════════════════════════════════════════════
+{
+  const marcador = '/* controle-do-instrumento-2.66 */';
+  const raiz = copiaComMutante(MODULO, base.get(MODULO) + marcador);
   try {
-    return {
-      ok: true,
-      saida: execFileSync('npx', ['vitest', 'run', arquivoTeste], {
-        encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-      }),
-    };
-  } catch (e) {
-    return { ok: false, saida: (e.stdout || '') + (e.stderr || '') };
+    if (!readFileSync(join(raiz, MODULO), 'utf8').includes(marcador)) {
+      console.error('\n🔴 ABORTADO — a cópia NÃO recebeu o mutante. A bancada não está mutando nada.');
+      process.exit(1);
+    }
+    if (readFileSync(MODULO, 'utf8').includes(marcador)) {
+      console.error('\n🔴 ABORTADO — o marcador vazou para o arquivo RASTREADO.');
+      process.exit(2);
+    }
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
   }
+  console.log('🔬 controle do instrumento: a cópia recebe o mutante, o fonte não.\n');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔴 A RODADA BASE (F-2.66-03) — antes de qualquer mutante
+// ═══════════════════════════════════════════════════════════════════════════════
+console.log('▶ rodada BASE (sem mutante) — se ela não vier verde, «N/N morderam» não vale nada\n');
+// 🔬 `MUT_QUEBRAR_BASE=1` é o MUTANTE DESTA GUARDA — existe para provar que a rodada base
+// MORDE, não para conveniência. Quebra a peça central SÓ na cópia da base; a bancada tem de
+// ABORTAR sem rodar mutante nenhum. Sem o knob, «base verde» seria uma frase que ninguém
+// nunca viu falhar.
+// ⚠️ A âncora é a linha INTEIRA do `if`, e o guard abaixo aborta se ela não casar:
+// substituição que casa noutro lugar é pior que substituição que não casa (aconteceu na
+// bancada da edge, onde a âncora curta pegou um carregador irmão e a base seguiu verde).
+const quebrarBase = process.env.MUT_QUEBRAR_BASE === '1';
+let textoBase = null;
+if (quebrarBase) {
+  textoBase = base.get(MODULO).replace(
+    "  if (typeof s.sinal_abuso !== 'boolean') return '—';",
+    "  if (typeof s.sinal_abuso !== 'boolean') return 'ninguém acima do limite';",
+  );
+  if (textoBase === base.get(MODULO)) {
+    console.error('🔴 ABORTADO — MUT_QUEBRAR_BASE não casou; a âncora mudou.');
+    process.exit(1);
+  }
+}
+const raizBase = copiaComMutante(quebrarBase ? MODULO : null, textoBase);
+let baseOk = true;
+try {
+  for (const t of [T_MODULO, T_CARD, T_FIACAO]) {
+    const { ok, saida } = rodarVitest(raizBase, t);
+    console.log(`   ${ok ? '✅' : '🔴'} base · ${t}`);
+    if (!ok) {
+      baseOk = false;
+      console.error(saida.slice(-2000));
+    }
+  }
+} finally {
+  rmSync(raizBase, { recursive: true, force: true });
+}
+if (!baseOk) {
+  console.error(
+    '\n🔴 ABORTADO — a rodada BASE não passou. Com a base quebrada TODO mutante «morde», ' +
+      'e o placar sairia idêntico ao de uma bancada que mede.',
+  );
+  process.exit(1);
+}
+console.log('');
+
 let mordeu = 0;
+let sentinelasVivas = 0;
 const sobreviventes = [];
 
 for (const m of MUTANTES) {
-  const base = original.get(m.arquivo);
-  const out = m.aplica(base);
-  if (out === base) {
+  const texto = base.get(m.arquivo);
+  const out = m.aplica(texto);
+  if (out === texto) {
     console.error(`\n🔴 ABORTADO — ${m.id}: a substituição NÃO casou (no-op mudo). Reancore o alvo.`);
-    restaurar();
     process.exit(1);
   }
-  writeFileSync(m.arquivo, out);
-  // mutante do módulo → o teste unitário; mutante do `page.tsx` → a guarda de fiação.
-  const alvo = m.arquivo === MODULO
-    ? 'src/app/paineldqfb/uso-esparso.test.ts'
-    : 'src/app/paineldqfb/page-fiacao.test.ts';
-  const { ok, saida } = rodarVitest(alvo);
-  restaurar();
+
+  const raiz = copiaComMutante(m.arquivo, out);
+  let ok, saida;
+  try {
+    ({ ok, saida } = rodarVitest(raiz, m.teste));
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+  verificarIntocado(`depois de ${m.id}`);
+
+  if (m.sentinela) {
+    if (ok) {
+      sentinelasVivas++;
+      console.log(`\n🛡️  SOBREVIVEU (esperado) — ${m.id}`);
+    } else {
+      console.error(
+        `\n🔴 A SENTINELA MORDEU — ${m.id}. A bancada está matando tudo: nenhum «MORDEU» ` +
+          'acima distingue asserção que mede de bancada quebrada.',
+      );
+      process.exitCode = 1;
+    }
+    continue;
+  }
 
   if (ok) {
     sobreviventes.push(m);
     console.log(`\n❌ SOBREVIVEU — ${m.id}\n   esperava vermelhar: ${m.asercao}`);
     continue;
   }
-  // 🔴 Não basta a suíte ficar vermelha: o teste VISADO tem de ser o que vermelhou. Um
-  // erro de sintaxe também derruba tudo, sem nenhuma asserção ter sido exercitada.
-  const acertou = saida.includes(m.marca);
-  const linha = (saida.split('\n').find((l) => l.includes('FAIL') || l.includes('×')) || '').trim();
+  // 🔴 Não basta a suíte ficar vermelha: o teste VISADO tem de ser o que vermelhou. Um erro
+  // de sintaxe também derruba tudo, sem exercitar asserção nenhuma.
+  const nomes = testesQueVermelharam(saida);
+  const acertou = nomes.some((n) => n.includes(m.marca));
   console.log(`\n${acertou ? '✅' : '⚠️ '} MORDEU — ${m.id}`);
-  console.log(`   efeito:  ${(acertou ? m.marca : linha).slice(0, 220)}`);
+  console.log(`   efeito:  ${(nomes.join(' | ') || '(nenhum teste × na saída)').slice(0, 240)}`);
   if (acertou) mordeu++;
   else {
     console.error(`   🔴 mordida INVÁLIDA: o teste visado («${m.marca}») não vermelhou.`);
@@ -254,8 +436,11 @@ for (const m of MUTANTES) {
   }
 }
 
-restaurar();
-console.log(`\n════ ${mordeu}/${MUTANTES.length} mutantes morderam ════`);
+verificarIntocado('no fim da bancada');
+const deAtaque = MUTANTES.filter((m) => !m.sentinela).length;
+const deSentinela = MUTANTES.length - deAtaque;
+console.log(`\n════ ${mordeu}/${deAtaque} mutantes morderam · ${sentinelasVivas}/${deSentinela} sentinelas vivas ════`);
+console.log('✅ fonte rastreado INTOCADO (sha256 conferido a cada mutante e no fim).');
 if (sobreviventes.length) {
   console.log('🔴 SOBREVIVENTES (asserções que não estavam medindo nada):');
   sobreviventes.forEach((m) => console.log(`   • ${m.id} → ${m.asercao}`));

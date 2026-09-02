@@ -23,6 +23,25 @@ import { describe, expect, it } from 'vitest';
 // `file:` e `readFileSync(new URL(...))` recusa. O vitest roda com a cwd na raiz.
 const PAGE = readFileSync(resolve(process.cwd(), 'src/app/paineldqfb/page.tsx'), 'utf8');
 
+/**
+ * 🔴 Recorta SÓ o bloco do card de uso esparso, entre âncoras — nunca o arquivo inteiro.
+ *
+ * A lição de F-2.66-02: `expect(PAGE).toMatch(…)` prova que o texto existe EM ALGUM LUGAR
+ * do arquivo, não que ele está no trecho que vai à tela. Qualquer segunda ocorrência
+ * (comentário, bloco comentado, card irmão) satisfaz a asserção. Aqui a âncora inicial é o
+ * comentário do card e a final é a linha seguinte ao componente; se qualquer uma deixar de
+ * casar, a função LEVANTA em vez de devolver string vazia — fatia vazia passaria verde em
+ * toda asserção negativa.
+ */
+function fatiaDoCard(): string {
+  const de = '{/* (Story 2.66 / AC7) Card "Uso esparso de aparelhos"';
+  const i = PAGE.indexOf(de);
+  if (i < 0) throw new Error('âncora inicial do card de uso esparso não casou no page.tsx');
+  const j = PAGE.indexOf('/>', i);
+  if (j < 0) throw new Error('âncora final do card de uso esparso não casou no page.tsx');
+  return PAGE.slice(i, j + 2);
+}
+
 describe('a tela chama os módulos, não uma cópia', () => {
   it('o card de aparelhos usa `estadoDosAparelhos` e o campo `semDado`', () => {
     expect(PAGE).toContain('estadoDosAparelhos(d.aparelhos_resumo)');
@@ -68,48 +87,46 @@ describe('a tela chama os módulos, não uma cópia', () => {
     expect(PAGE).toContain('RESSALVAS_APARELHOS.map');
   });
 
-  it('(2.66/AC7) o card de uso esparso usa `estadoDoUsoEsparso`, não uma cópia', () => {
-    expect(PAGE).toContain('estadoDoUsoEsparso(d.medicao_uso_esparso)');
-    // e o que a tela desenha vem do ESTADO, não de `d.medicao_uso_esparso` direto — que é
-    // o caminho pelo qual a régua voltaria a ser recalculada aqui dentro.
-    expect(PAGE).toMatch(/usoEsparso\.distribuicao\.map\(/);
-    expect(PAGE).toContain('usoEsparso.temSerie');
+  /**
+   * 🔴 (2.66) A METADE QUE ESTA GUARDA PODE PROVAR — e a que ela NÃO pode.
+   *
+   * A `@qa` derrubou a versão anterior destes testes (F-2.66-02): eles casavam regex sobre
+   * o ARQUIVO INTEIRO, então ela pôs o defeito no JSX e as frases procuradas num
+   * COMENTÁRIO — 15/15 verdes com a tela dizendo o oposto do banco.
+   *
+   * O conserto tem duas partes, e esta é a segunda:
+   *   1. o JSX saiu para `uso-esparso-card.tsx` e é RENDERIZADO em
+   *      `uso-esparso-card.test.tsx`, onde as asserções são sobre o DOM (comentário não
+   *      entra no DOM);
+   *   2. aqui fica só o que o render NÃO alcança: que a TELA usa aquele card, com as duas
+   *      props certas. Amarrado ao TRECHO recortado por âncoras, nunca ao arquivo todo.
+   */
+  it('(2.66/AC7) a aba Contas monta o `UsoEsparsoCard`, com as DUAS props', () => {
+    const trecho = fatiaDoCard();
+    expect(trecho).toMatch(/<UsoEsparsoCard\b/);
+    expect(trecho).toMatch(/semanas=\{d\.medicao_uso_esparso\}/);
+    // ⛔ A prop de ERRO é obrigatória: sem ela, "nunca medido" e "a leitura quebrou"
+    // voltam a sair com a mesma frase, que é o colapso que o card existe para desfazer.
+    expect(trecho).toMatch(/erro=\{d\.medicao_uso_esparso_erro\}/);
   });
 
-  it('🔴 (2.66/AC7) o card distingue os TRÊS estados do sinal', () => {
-    // aceso · apagado · NÃO RESPONDEU. Se `sinalAceso === null` sumir daqui, um sinal que
-    // não respondeu volta a sair como "está tudo bem" — o zero inventado com outra roupa.
-    expect(PAGE).toMatch(/usoEsparso\.sinalAceso === true[\s\S]{0,400}usoEsparso\.sinalAceso === null/);
-    expect(PAGE).toContain('o sinal não respondeu nesta medição');
+  it('🔴 (2.66) o card NÃO volta a ser calculado inline nesta tela', () => {
+    // O mutante P7: a tela recalcula o estado por dentro e o módulo deixa de ser o que
+    // está no ar. Se `estadoDoUsoEsparso` reaparecer no `page.tsx`, é isso que aconteceu.
+    expect(PAGE).not.toMatch(/estadoDoUsoEsparso\s*\(/);
+    expect(PAGE).not.toMatch(/rotuloDaSemana\s*\(/);
+    // 🔬 CONTROLE POSITIVO do instrumento: as negativas acima são satisfeitas
+    // trivialmente por um arquivo vazio ou por um caminho errado. Um irmão que SABIDAMENTE
+    // calcula inline tem de ser encontrado.
+    expect(PAGE).toMatch(/estadoDosAparelhos\s*\(/);
   });
 
-  it('🔴 (2.66/AC7) "não medido" e "a leitura falhou" NÃO saem com a mesma frase', () => {
-    // Os dois chegam como campo AUSENTE; só `medicao_uso_esparso_erro` os separa. Sem
-    // isso, uma RPC quebrada se disfarça de "a primeira medição ainda não rodou".
-    expect(PAGE).toContain('medicao_uso_esparso_erro');
-    expect(PAGE).toContain('ainda não medido — a medição roda toda segunda, de madrugada');
-  });
-
-  it('🔴 (2.66/AC7) o card NUNCA afirma ausência de abuso sem medição', () => {
-    // O ramo sem série só pode dizer "ainda não medido" ou nomear a falha de leitura.
-    expect(PAGE).not.toMatch(/ainda não medido[\s\S]{0,200}nenhuma conta passou do limite/);
-  });
-
-  it('🔴 (2.66) na lista de semanas, o SINAL decide antes da CONTAGEM', () => {
-    // Defeito real, achado pelo CodeRabbit em 02/09: `contas_acima_de_3` é NULL-ável. Com a
-    // contagem ausente e o sinal ACESO, a ordem antiga caía no ramo final e escrevia
-    // "ninguém acima do limite" — a tela afirmando o OPOSTO do que o banco disse.
-    // A regex exige `s.sinal_abuso === null` ANTES de `s.contas_acima_de_3` na expressão.
-    expect(PAGE).toMatch(/s\.sinal_abuso === null[\s\S]{0,200}s\.contas_acima_de_3 != null/);
-    expect(PAGE).toContain('acima do limite — quantidade não informada');
-  });
-
-  it('🔴 (2.66/achado 8) o rótulo do ACÚMULO está na tela, junto dos números', () => {
-    // Sem ele, "144 desistências, subindo toda semana" é lido como piora quando é acúmulo
-    // desde o gatilho. As ressalvas do módulo também são renderizadas, não só importadas.
-    expect(PAGE).toContain('acumulado desde 23/08/2026');
-    expect(PAGE).toContain('RESSALVAS_USO_ESPARSO.map');
-    expect(PAGE).toContain('LEGENDA_SINAL_USO_ESPARSO');
+  it('🔴 (2.66) a fatia do card NÃO é vazia — o recorte precisa de controle', () => {
+    // Fatia vazia satisfaz `not.toMatch` trivialmente, e as duas asserções acima passariam
+    // a medir nada. É o mesmo defeito de afirmar ausência sem controle positivo.
+    const trecho = fatiaDoCard();
+    expect(trecho.length).toBeGreaterThan(200);
+    expect(trecho).toContain('Uso esparso de aparelhos');
   });
 
   it('a data do card da cota passa por `fmtDataBr`', () => {

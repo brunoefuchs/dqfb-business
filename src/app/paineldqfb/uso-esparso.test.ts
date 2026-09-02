@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   contasNaSerie,
+  rotuloDaSemana,
   diaCurtoBr,
   distribuicaoOrdenada,
   estadoDoUsoEsparso,
@@ -60,7 +61,15 @@ describe('estadoDoUsoEsparso', () => {
     }
   });
 
-  it('série presente ⇒ a semana mais recente é a `atual`, com o sinal do BANCO', () => {
+  it('série presente ⇒ a PRIMEIRA linha é a `atual` (a ordem é contrato do banco)', () => {
+    // 🔴 O NOME diz «a primeira», não «a mais recente», e a diferença é o achado F-2.66-08.
+    // `estadoDoUsoEsparso` faz `semanas[0]` SEM ordenar: ele confia no `order by m.dia desc`
+    // de `app.painel_medicao_uso_esparso()`. Prometer «escolhe a mais recente» seria dizer
+    // que este módulo tem uma capacidade que ele não tem — e nome que promete outra coisa é
+    // pior que teste ausente (`.claude/rules/test-must-prove.md`).
+    // A ordem TEM guarda, do outro lado do fio: o mutante `desc` → `asc` na função de
+    // leitura vermelha o smoke efêmero (marco «a primeira linha da serie e … esperado o dia
+    // mais recente»).
     const anterior: SemanaUsoEsparso = { ...SEMANA, dia: '2026-08-26', candidatos: 8 };
     const e = estadoDoUsoEsparso([SEMANA, anterior]);
     expect(e.temSerie).toBe(true);
@@ -101,6 +110,43 @@ describe('estadoDoUsoEsparso', () => {
       { aparelhos: 3, contas: 1 },
     ]);
     expect(e.sinalAceso).toBe(false);
+  });
+});
+
+describe('rotuloDaSemana — o SINAL manda, não a CONTAGEM', () => {
+  // 🔴 A regra que o achado MAJOR do CodeRabbit atingiu, agora numa função pura. Ela saiu
+  // do JSX porque lá o conserto ficava guardado por uma regex sobre o arquivo, que a `@qa`
+  // derrubou deixando as frases num comentário (F-2.66-02).
+
+  it('🔴 sinal ACESO com contagem NULA nunca diz «ninguém acima do limite»', () => {
+    // O defeito exato: a contagem é NULL-ável e era avaliada primeiro.
+    const r = rotuloDaSemana({ sinal_abuso: true, contas_acima_de_3: null });
+    expect(r).toBe('acima do limite — quantidade não informada');
+    expect(r).not.toContain('ninguém');
+  });
+
+  it('🔬 CONTROLE POSITIVO: sinal APAGADO diz «ninguém acima do limite»', () => {
+    // Sem o par, o teste acima é satisfeito por uma função que devolve sempre a mesma
+    // frase — e aí o card nunca diria "ninguém", que é o resultado normal.
+    expect(rotuloDaSemana({ sinal_abuso: false, contas_acima_de_3: 0 })).toBe(
+      'ninguém acima do limite',
+    );
+  });
+
+  it('contagem POSITIVA detalha o número', () => {
+    expect(rotuloDaSemana({ sinal_abuso: true, contas_acima_de_3: 2 })).toBe('2 acima do limite');
+  });
+
+  it('🔴 sinal que não é booleano sai como «—», nunca como afirmação', () => {
+    for (const s of [null, undefined as unknown as boolean, 'sim' as unknown as boolean]) {
+      expect(rotuloDaSemana({ sinal_abuso: s, contas_acima_de_3: 5 })).toBe('—');
+    }
+  });
+
+  it('🔴 sinal APAGADO com contagem positiva ainda detalha — o banco é quem sabe', () => {
+    // Combinação contraditória (o banco não a produz), e a escolha é declarada: mostrar o
+    // número que veio, nunca inventar coerência apagando o dado.
+    expect(rotuloDaSemana({ sinal_abuso: false, contas_acima_de_3: 3 })).toBe('3 acima do limite');
   });
 });
 

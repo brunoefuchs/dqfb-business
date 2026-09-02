@@ -155,6 +155,36 @@ export function diaCurtoBr(dia: string | null | undefined): string {
 }
 
 /**
+ * 🔴 O RÓTULO DE UMA SEMANA NA LISTA DE MEDIÇÕES ANTERIORES — a regra que o achado MAJOR
+ * do CodeRabbit (02/09/2026) atingiu, agora numa função PURA em vez de uma cadeia de
+ * ternários dentro do JSX.
+ *
+ * **O SINAL MANDA, NÃO A CONTAGEM.** `contas_acima_de_3` é NULL-ável: a versão original
+ * avaliava a contagem primeiro e, com ela ausente e o sinal ACESO, caía no ramo final
+ * escrevendo «ninguém acima do limite» — a tela afirmando o OPOSTO do que o banco disse.
+ *
+ * ⚠️ **Por que a regra saiu do JSX:** o conserto tinha sido cercado por uma guarda que lia
+ * o `page.tsx` como texto, e a `@qa` a derrubou reintroduzindo o defeito no JSX e deixando
+ * as frases que a guarda procurava dentro de um COMENTÁRIO — 15/15 verdes. Numa função
+ * pura, o detector é direto: mutar a ordem dos ramos vermelha o teste unitário abaixo, e
+ * deixar de chamá-la vermelha a guarda de fiação. [[conserto-no-call-site-nasce-sem-detector]]
+ *
+ * Os quatro estados, nesta ordem, e a ordem É a regra:
+ *   `sinal_abuso` nulo          → «—» (não respondeu; NUNCA "está tudo bem")
+ *   contagem > 0                → «N acima do limite»
+ *   sinal aceso, contagem nula  → «acima do limite — quantidade não informada»
+ *   sinal apagado               → «ninguém acima do limite»
+ */
+export function rotuloDaSemana(s: Pick<SemanaUsoEsparso, 'sinal_abuso' | 'contas_acima_de_3'>): string {
+  if (typeof s.sinal_abuso !== 'boolean') return '—';
+  if (s.contas_acima_de_3 != null && s.contas_acima_de_3 > 0) {
+    return `${s.contas_acima_de_3} acima do limite`;
+  }
+  if (s.sinal_abuso === true) return 'acima do limite — quantidade não informada';
+  return 'ninguém acima do limite';
+}
+
+/**
  * Quantas contas a série atual conhece (a soma dos baldes). `null` quando não há série —
  * ⛔ nunca 0, que a tela leria como "não existe conta nenhuma".
  */
