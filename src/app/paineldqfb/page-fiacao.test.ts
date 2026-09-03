@@ -53,10 +53,28 @@ const PAGE = readFileSync(resolve(process.cwd(), 'src/app/paineldqfb/page.tsx'),
  *
  * A lição de F-2.66-02: `expect(PAGE).toMatch(…)` prova que o texto existe EM ALGUM LUGAR
  * do arquivo, não que ele está no trecho que vai à tela. Qualquer segunda ocorrência
- * (comentário, bloco comentado, card irmão) satisfaz a asserção. Aqui a âncora inicial é o
- * comentário do card e a final é a linha seguinte ao componente; se qualquer uma deixar de
- * casar, a função LEVANTA em vez de devolver string vazia — fatia vazia passaria verde em
- * toda asserção negativa.
+ * (comentário, bloco comentado, card irmão) satisfaz a asserção.
+ *
+ * **Como o recorte funciona HOJE**, em três passos, e a ORDEM entre eles é parte da regra:
+ *   1. **limpar ANTES de ancorar** — `semComentarios(PAGE)` roda sobre o arquivo INTEIRO,
+ *      e só então se procura a âncora. O inverso era o F-2.66-12: um comentário acima da
+ *      montagem que citasse o elemento retargetava a fatia;
+ *   2. **a âncora inicial exige COMEÇO DE LINHA DE JSX** (`/^[ \t]*<UsoEsparsoCard\b/m`),
+ *      não uma ocorrência qualquer do nome. É o discriminador de FORMA do F-2.66-13: uma
+ *      montagem tem só indentação antes dela; um decoy dentro de string vem precedido de
+ *      `{'` ou `{"`. A âncora final é o `/>` que fecha o elemento;
+ *   3. **a contagem e o recorte usam a MESMA régua** — a unicidade é medida com a mesma
+ *      regex da busca, senão as duas mediriam coisas diferentes e a fatia poderia ser a
+ *      errada em silêncio.
+ *
+ * Se qualquer âncora deixar de casar, ou se houver mais de uma montagem, a função LEVANTA
+ * em vez de devolver string vazia — fatia vazia passaria verde em toda asserção negativa.
+ *
+ * ⚠️ **Este parágrafo já esteve VENCIDO uma vez**, e o achado é instrutivo: ele descrevia as
+ * âncoras anteriores ao F-2.66-12 (o comentário do card, a linha seguinte ao componente)
+ * enquanto o código já usava outras — texto desatualizado **dentro da declaração de
+ * fronteira**, que é justamente o lugar feito para ser lido ANTES de alguém mexer. Quem
+ * mudar as âncoras muda este bloco no mesmo commit.
  */
 function fatiaDoCard(): string {
   // 🔴 LIMPAR PRIMEIRO, ANCORAR DEPOIS — e a ORDEM É O CONSERTO (F-2.66-12).
